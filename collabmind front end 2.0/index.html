@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CollabMind | Build Software with AI</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link
+        href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap"
+        rel="stylesheet">
+    <link rel="stylesheet" href="css/style.css">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+</head>
+
+<body>
+
+    <!-- Navbar -->
+    <nav class="navbar">
+        <div class="logo">
+            <i class="fas fa-brain"></i> CollabMind
+        </div>
+        <div class="nav-menu">
+            <a href="#home" class="nav-item active" onclick="navigateTo('home')">Home</a>
+            <a href="#dashboard" class="nav-item" onclick="navigateTo('dashboard')">Dashboard</a>
+        </div>
+    </nav>
+
+    <main>
+        <!-- 1. Home Page -->
+        <section id="home" class="page active">
+            <div class="hero">
+                <div class="badge-pill">Beta v1.0</div>
+                <h1>Build Complete Software Projects Using AI</h1>
+                <p class="subtitle">
+                    Describe your project idea and let CollabMind's multi-agent system generate
+                    production-ready code, folder structure, and documentation automatically.
+                </p>
+                <button class="btn btn-primary btn-lg" onclick="navigateTo('generator')">
+                    Start New Project <i class="fas fa-arrow-right"></i>
+                </button>
+            </div>
+
+            <div class="features-preview">
+                <div class="f-item">
+                    <i class="fas fa-code"></i>
+                    <span>Auto-Coding</span>
+                </div>
+                <div class="f-item">
+                    <i class="fas fa-folder-tree"></i>
+                    <span>Full Structure</span>
+                </div>
+                <div class="f-item">
+                    <i class="fas fa-book"></i>
+                    <span>Documentation</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- 2. Project Generator Page -->
+        <section id="generator" class="page">
+            <div class="container-sm">
+                <div class="page-header">
+                    <h2>Create New Project</h2>
+                    <p>Define your requirements and let our agents handle the rest.</p>
+                </div>
+
+                <div class="generator-form card">
+                    <div class="form-group">
+                        <label>Target Platform</label>
+                        <div class="select-grid">
+                            <div class="option-card selected" onclick="selectType(this, 'web')">
+                                <i class="fas fa-globe"></i> Web App
+                            </div>
+                            <div class="option-card" onclick="selectType(this, 'mobile')">
+                                <i class="fas fa-mobile-alt"></i> Mobile App
+                            </div>
+                            <div class="option-card" onclick="selectType(this, 'api')">
+                                <i class="fas fa-server"></i> API Service
+                            </div>
+                            <div class="option-card" onclick="selectType(this, 'ml')">
+                                <i class="fas fa-robot"></i> ML Project
+                            </div>
+                        </div>
+                    </div>
+
+                    <div class="form-row">
+                        <div class="form-group half">
+                            <label>Language</label>
+                            <select id="lang-select">
+                                <option value="python">Python</option>
+                                <option value="javascript">JavaScript / TypeScript</option>
+                                <option value="java">Java</option>
+                                <option value="go">Go</option>
+                            </select>
+                        </div>
+                        <div class="form-group half">
+                            <label>Framework (Optional)</label>
+                            <input type="text" id="framework-input" placeholder="e.g. React, FastAPI">
+                        </div>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Project Name</label>
+                        <input type="text" id="project-name-input" placeholder="e.g. Nebula CRM">
+                    </div>
+
+                    <div class="form-group">
+                        <label>Project Requirements</label>
+                        <textarea id="requirements-input"
+                            placeholder="Describe your project functionality, features, and user flows..."></textarea>
+                    </div>
+
+                    <div class="form-group">
+                        <label>Additional Features</label>
+                        <div
+                            style="display: flex; gap: 20px; align-items: center; background: #f8fafc; padding: 15px; border-radius: 8px; border: 1px solid #e2e8f0;">
+                            <label
+                                style="display: flex; align-items: center; gap: 10px; cursor: pointer; font-weight: 500; font-size: 0.95rem;">
+                                <input type="checkbox" id="include-chat-agent"
+                                    style="width: 18px; height: 18px; cursor: pointer;">
+                                Include AI Chat Agent
+                            </label>
+                            <span style="font-size: 0.8rem; color: #64748b;">Adds a functional AI assistant to your
+                                project's dashboard.</span>
+                        </div>
+                    </div>
+
+                    <div class="form-actions">
+                        <button class="btn btn-secondary" onclick="navigateTo('home')">Cancel</button>
+                        <button class="btn btn-primary" onclick="startGeneration()">
+                            Generate Project <i class="fas fa-magic"></i>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- Loading Overlay with Agent Chat -->
+        <div id="loading-overlay" class="loading-overlay hidden">
+            <div class="loader-content chat-mode">
+                <div class="chat-header">
+                    <h3><i class="fas fa-network-wired"></i> Agent Collaboration Log</h3>
+                    <div class="spinner-small"></div>
+                </div>
+                <div id="agent-chat-window" class="agent-chat-window">
+                    <!-- Chat bubbles injected by JS -->
+                </div>
+                <div class="progress-bar-slim">
+                    <div class="progress-fill"></div>
+                </div>
+            </div>
+        </div>
+
+        <!-- 3. Generated Output Page -->
+        <section id="results" class="page">
+            <div class="results-header">
+                <div>
+                    <h2 id="res-project-title">My New Project</h2>
+                    <p class="status-badge"><i class="fas fa-check-circle"></i> Generated Successfully</p>
+                </div>
+                <div class="header-actions">
+                    <button class="btn btn-outline" onclick="downloadProject()"><i class="fas fa-download"></i> Download
+                        Project</button>
+                    <button class="btn btn-primary"><i class="fas fa-rocket"></i> Deploy</button>
+                </div>
+            </div>
+
+            <div class="results-container">
+                <!-- Tabs -->
+                <div class="tabs-nav">
+                    <button class="tab-btn active" onclick="switchTab('preview')">
+                        <i class="fas fa-play"></i> Live Preview
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('structure')">
+                        <i class="fas fa-folder"></i> Structure
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('frontend')">
+                        <i class="fas fa-desktop"></i> Frontend Code
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('backend')">
+                        <i class="fas fa-server"></i> Backend
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('db')">
+                        <i class="fas fa-database"></i> Database
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('docs')">
+                        <i class="fas fa-file-alt"></i> Docs
+                    </button>
+                    <button class="tab-btn" onclick="switchTab('logs')">
+                        <i class="fas fa-terminal"></i> Agent Logs
+                    </button>
+                </div>
+
+                <!-- Tab Content -->
+                <div class="tab-content-area">
+
+                    <!-- 0. Live Preview (New) -->
+                    <div id="tab-preview" class="tab-pane active">
+                        <div class="preview-container card"
+                            style="padding: 0; overflow: hidden; height: 600px; background: white; position: relative;">
+                            <iframe id="preview-frame" style="width: 100%; height: 100%; border: none;"></iframe>
+                            <div class="preview-overlay" id="preview-placeholder"
+                                style="position: absolute; top:0; left:0; width:100%; height:100%; display:flex; align-items:center; justify-content:center; background:#f8fafc; color:#64748b; z-index: -1;">
+                                <p>Generating app...</p>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- 1. Structure -->
+                    <div id="tab-structure" class="tab-pane">
+                        <div class="file-tree card">
+                            <ul>
+                                <li class="folder open"><span>project-root/</span>
+                                    <ul>
+                                        <li class="folder"><span>frontend/</span>
+                                            <ul>
+                                                <li class="file"><span>index.html</span></li>
+                                                <li class="file"><span>style.css</span></li>
+                                                <li class="file"><span>script.js</span></li>
+                                            </ul>
+                                        </li>
+                                        <li class="folder"><span>backend/</span>
+                                            <ul>
+                                                <li class="file"><span>app.py</span></li>
+                                                <li class="file"><span>routes.py</span></li>
+                                                <li class="file"><span>models.py</span></li>
+                                            </ul>
+                                        </li>
+                                        <li class="folder"><span>database/</span>
+                                            <ul>
+                                                <li class="file"><span>schema.sql</span></li>
+                                            </ul>
+                                        </li>
+                                        <li class="file"><span>README.md</span></li>
+                                    </ul>
+                                </li>
+                            </ul>
+                        </div>
+                    </div>
+
+                    <!-- 2. Frontend -->
+                    <div id="tab-frontend" class="tab-pane">
+                        <div class="code-editor card">
+                            <div class="editor-header">
+                                <span>index.html</span>
+                                <span class="badge">HTML</span>
+                            </div>
+                            <pre><code id="code-frontend">
+&lt;!-- Generated by CollabMind Frontend Agent --&gt;
+&lt;!DOCTYPE html&gt;
+&lt;html lang="en"&gt;
+&lt;head&gt;
+    &lt;meta charset="UTF-8"&gt;
+    &lt;title&gt;Task Manager&lt;/title&gt;
+    &lt;link rel="stylesheet" href="style.css"&gt;
+&lt;/head&gt;
+&lt;body&gt;
+    &lt;nav&gt;
+        &lt;h1&gt;Task Manager&lt;/h1&gt;
+    &lt;/nav&gt;
+    &lt;main&gt;
+        &lt;form id="taskForm"&gt;
+            &lt;input type="text" id="taskInput" placeholder="New Task..." required&gt;
+            &lt;button type="submit"&gt;Add&lt;/button&gt;
+        &lt;/form&gt;
+        &lt;ul id="taskList"&gt;&lt;/ul&gt;
+    &lt;/main&gt;
+    &lt;script src="script.js"&gt;&lt;/script&gt;
+&lt;/body&gt;
+&lt;/html&gt;
+                            </code></pre>
+                        </div>
+                    </div>
+
+                    <!-- 3. Backend -->
+                    <div id="tab-backend" class="tab-pane">
+                        <div class="code-editor card">
+                            <div class="editor-header">
+                                <span>app.py</span>
+                                <span class="badge">Python / Flask</span>
+                            </div>
+                            <pre><code id="code-backend">
+# Generated by CollabMind Backend Agent
+from flask import Flask, jsonify, request
+from models import db, Task
+
+app = Flask(__name__)
+app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///tasks.db'
+db.init_app(app)
+
+@app.route('/api/tasks', methods=['GET'])
+def get_tasks():
+    tasks = Task.query.all()
+    return jsonify([t.to_dict() for t in tasks])
+
+@app.route('/api/tasks', methods=['POST'])
+def create_task():
+    data = request.json
+    new_task = Task(title=data['title'])
+    db.session.add(new_task)
+    db.session.commit()
+    return jsonify(new_task.to_dict()), 201
+
+if __name__ == '__main__':
+    with app.app_context():
+        db.create_all()
+    app.run(debug=True)
+                            </code></pre>
+                        </div>
+                    </div>
+
+                    <!-- 4. Database -->
+                    <div id="tab-db" class="tab-pane">
+                        <div class="code-editor card">
+                            <div class="editor-header">
+                                <span>schema.sql</span>
+                                <span class="badge">SQL</span>
+                            </div>
+                            <pre><code id="code-db">
+-- Generated by CollabMind Database Agent
+CREATE TABLE IF NOT EXISTS users (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    username TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL
+);
+
+CREATE TABLE IF NOT EXISTS tasks (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    user_id INTEGER,
+    title TEXT NOT NULL,
+    is_completed BOOLEAN DEFAULT 0,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY(user_id) REFERENCES users(id)
+);
+                            </code></pre>
+                        </div>
+                    </div>
+
+                    <!-- 5. Docs -->
+                    <div id="tab-docs" class="tab-pane">
+                        <div class="markdown-preview card">
+                            <h1 id="doc-title">Project Documentation</h1>
+                            <p>Generated by <strong>Documentation Agent</strong></p>
+                            <hr>
+                            <h3>🚀 Setup & Installation</h3>
+                            <pre>
+git clone https://github.com/generated/project.git
+cd project
+pip install -r requirements.txt
+python backend/app.py
+                            </pre>
+                            <h3>📡 API Endpoints</h3>
+                            <ul>
+                                <li><code>GET /api/tasks</code> - Retrieve all tasks</li>
+                                <li><code>POST /api/tasks</code> - Create a new task</li>
+                                <li><code>DELETE /api/tasks/:id</code> - Remove a task</li>
+                            </ul>
+                            <h3>🗄️ Database</h3>
+                            <p>Uses SQLite for local development. Schema includes <code>users</code> and
+                                <code>tasks</code> tables.
+                            </p>
+                        </div>
+                    </div>
+
+                    <!-- 6. Logs (New) -->
+                    <div id="tab-logs" class="tab-pane">
+                        <div class="code-editor card" style="height: 500px;">
+                            <div class="editor-header">
+                                <span><i class="fas fa-terminal"></i> build_log.txt</span>
+                                <span class="badge">LOG</span>
+                            </div>
+                            <div id="logs-output" class="agent-chat-window"
+                                style="height:100%; background:#0f172a; padding:1rem; overflow-y:auto;">
+                                <!-- Logs copied here -->
+                            </div>
+                        </div>
+                    </div>
+
+                </div>
+            </div>
+        </section>
+
+        <!-- 4. Dashboard (Optional) -->
+        <section id="dashboard" class="page">
+            <div class="container-sm">
+                <div class="page-header">
+                    <h2>Project History</h2>
+                </div>
+
+                <div class="history-list card">
+                    <div class="history-item">
+                        <div class="h-icon web"><i class="fas fa-globe"></i></div>
+                        <div class="h-info">
+                            <h4>E-commerce Dashboard</h4>
+                            <p>React • Node.js • 2 days ago</p>
+                        </div>
+                        <button class="btn btn-sm btn-outline">Download</button>
+                    </div>
+                    <div class="history-item">
+                        <div class="h-icon ml"><i class="fas fa-robot"></i></div>
+                        <div class="h-info">
+                            <h4>Customer Churn Model</h4>
+                            <p>Python • Scikit-learn • 1 week ago</p>
+                        </div>
+                        <button class="btn btn-sm btn-outline">Download</button>
+                    </div>
+                    <div class="history-item">
+                        <div class="h-icon mobile"><i class="fas fa-mobile-alt"></i></div>
+                        <div class="h-info">
+                            <h4>Fitness Tracker App</h4>
+                            <p>Flutter • Dart • 2 weeks ago</p>
+                        </div>
+                        <button class="btn btn-sm btn-outline">Download</button>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+
+
+    </main>
+
+    <footer>
+        <div class="footer-container">
+            <div class="brand">CollabMind</div>
+            <div class="note">Powered by AI-based automation</div>
+            <div class="disclaimer">Academic Project Demonstration</div>
+        </div>
+    </footer>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+    <script src="js/generator-backend.js"></script>
+    <script src="js/generator-db.js"></script>
+    <script src="js/generator-docs.js"></script>
+    <script src="js/generator-scripts.js"></script>
+    <script src="js/generator-tests.js"></script>
+    <script src="js/zip-logic.js"></script>
+    <script src="js/app.js"></script>
+</body>
+
+</html>

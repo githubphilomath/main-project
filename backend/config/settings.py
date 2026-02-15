@@ -18,7 +18,7 @@ class Settings(BaseSettings):
 
     # LLM Configuration
     gemini_api_key: str
-    gemini_model: str = "gemini-pro"
+    gemini_model: str = "gemini-2.5-flash"
 
     # Database Configuration
     database_url: str
@@ -49,7 +49,7 @@ class Settings(BaseSettings):
     # RAG Configuration
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.7
-    embedding_model: str = "text-embedding-004"
+    embedding_model: str = "gemini-embedding-001"
 
     @property
     def chroma_client_settings(self) -> dict:

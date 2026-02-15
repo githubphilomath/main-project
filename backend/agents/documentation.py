@@ -83,7 +83,7 @@ class DocumentationAgent(BaseAgent):
 
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
-            doc_data = json.loads(response)
+            doc_data = self.parse_json_response(response)
             docs = doc_data.get("docs", [])
         except Exception as e:
             self.logger.error("Failed to parse documentation", error=str(e))

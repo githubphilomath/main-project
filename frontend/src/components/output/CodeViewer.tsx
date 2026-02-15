@@ -5,9 +5,6 @@
 import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
-import rehypeHighlight from 'rehype-highlight';
-import { FileCode } from 'lucide-react';
-// Highlight.js styles loaded via CDN or custom CSS
 
 interface CodeViewerProps {
   file: {
@@ -24,7 +21,7 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ file }) => {
 
   if (isMarkdown) {
     return (
-      <div className="h-full overflow-y-auto p-6">
+      <div className="h-full overflow-auto p-6">
         <div className="prose prose-sm dark:prose-invert max-w-none">
           <ReactMarkdown remarkPlugins={[remarkGfm]}>{file.content}</ReactMarkdown>
         </div>
@@ -33,11 +30,12 @@ export const CodeViewer: React.FC<CodeViewerProps> = ({ file }) => {
   }
 
   return (
-    <div className="h-full overflow-y-auto">
-      <pre className="h-full m-0 p-4 bg-[#0d1117] text-sm">
-        <code className={`language-${language}`}>{file.content}</code>
+    <div className="h-full overflow-auto bg-[#0d1117]">
+      <pre className="m-0 p-4 text-sm leading-relaxed" style={{ background: 'transparent' }}>
+        <code style={{ color: '#c9d1d9', fontFamily: 'ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace' }}>
+          {file.content}
+        </code>
       </pre>
     </div>
   );
 };
-

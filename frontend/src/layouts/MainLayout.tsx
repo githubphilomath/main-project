@@ -1,6 +1,9 @@
 /**
  * Main Layout Component
  * Three-panel layout: Chat | Output | Agents
+ *
+ * Uses a strict h-screen -> flex-col -> flex-1 -> grid pattern.
+ * Every flex/grid child that needs to scroll must have min-h-0/min-w-0.
  */
 
 import React from 'react';
@@ -11,26 +14,27 @@ import { AgentExecutionPanel } from '@/components/agents/AgentExecutionPanel';
 
 export const MainLayout: React.FC = () => {
   return (
-    <div className="h-screen flex flex-col bg-background">
+    <div className="h-screen w-screen flex flex-col overflow-hidden">
+      {/* Header - fixed height */}
       <Header />
-      
-      <div className="flex-1 grid grid-cols-[400px_1fr_350px] gap-4 p-4 overflow-hidden">
-        {/* Left Panel - Chat */}
-        <div className="h-full">
+
+      {/* Main content - fills remaining height */}
+      <main className="flex-1 min-h-0 flex gap-3 p-3">
+        {/* Left Panel - Chat (fixed width) */}
+        <section className="w-[380px] flex-shrink-0 min-h-0">
           <ChatPanel />
-        </div>
+        </section>
 
-        {/* Center Panel - Output Viewer */}
-        <div className="h-full overflow-hidden">
+        {/* Center Panel - Output Viewer (fills remaining) */}
+        <section className="flex-1 min-h-0 min-w-0">
           <OutputViewer />
-        </div>
+        </section>
 
-        {/* Right Panel - Agent Execution Monitor */}
-        <div className="h-full overflow-hidden">
+        {/* Right Panel - Agent Execution Monitor (fixed width) */}
+        <section className="w-[320px] flex-shrink-0 min-h-0">
           <AgentExecutionPanel />
-        </div>
-      </div>
+        </section>
+      </main>
     </div>
   );
 };
-

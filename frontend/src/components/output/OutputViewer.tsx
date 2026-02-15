@@ -22,14 +22,18 @@ export const OutputViewer: React.FC = () => {
   const allFiles = [
     ...codeArtifacts.map((f) => ({ ...f, type: 'code' as const })),
     ...testArtifacts.map((f) => ({ ...f, type: 'test' as const })),
-    ...docArtifacts.map((f) => ({ ...f, type: 'doc' as const })),
+    ...docArtifacts.map((f) => ({
+      ...f,
+      file_path: f.doc_type ? `docs/${f.doc_type}` : (f as any).file_path || 'docs/unknown',
+      type: 'doc' as const,
+    })),
   ];
 
   const selectedFileData = allFiles.find((f) => f.file_path === selectedFile);
 
   const handleDownload = () => {
     if (!selectedFileData) return;
-    
+
     const blob = new Blob([selectedFileData.content], { type: 'text/plain' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
@@ -56,37 +60,37 @@ export const OutputViewer: React.FC = () => {
   }
 
   return (
-    <div className="h-full flex flex-col gap-4">
-      {/* Stats */}
-      <div className="grid grid-cols-3 gap-4">
+    <div className="h-full flex flex-col gap-3">
+      {/* Stats row - never shrinks */}
+      <div className="flex-shrink-0 grid grid-cols-3 gap-3">
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="!p-3">
             <div className="flex items-center gap-2">
-              <FileCode className="h-5 w-5 text-blue-500" />
-              <div>
-                <p className="text-2xl font-bold">{projectStatus.artifacts_count.code}</p>
+              <FileCode className="h-4 w-4 text-blue-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-lg font-bold leading-tight">{projectStatus.artifacts_count.code}</p>
                 <p className="text-xs text-muted-foreground">Code Files</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="!p-3">
             <div className="flex items-center gap-2">
-              <TestTube className="h-5 w-5 text-green-500" />
-              <div>
-                <p className="text-2xl font-bold">{projectStatus.artifacts_count.tests}</p>
+              <TestTube className="h-4 w-4 text-green-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-lg font-bold leading-tight">{projectStatus.artifacts_count.tests}</p>
                 <p className="text-xs text-muted-foreground">Test Files</p>
               </div>
             </div>
           </CardContent>
         </Card>
         <Card>
-          <CardContent className="p-4">
+          <CardContent className="!p-3">
             <div className="flex items-center gap-2">
-              <FileText className="h-5 w-5 text-purple-500" />
-              <div>
-                <p className="text-2xl font-bold">{projectStatus.artifacts_count.documentation}</p>
+              <FileText className="h-4 w-4 text-purple-500 flex-shrink-0" />
+              <div className="min-w-0">
+                <p className="text-lg font-bold leading-tight">{projectStatus.artifacts_count.documentation}</p>
                 <p className="text-xs text-muted-foreground">Docs</p>
               </div>
             </div>
@@ -94,46 +98,47 @@ export const OutputViewer: React.FC = () => {
         </Card>
       </div>
 
-      {/* File Tree and Viewer */}
-      <div className="flex-1 grid grid-cols-[300px_1fr] gap-4 min-h-0">
-        <Card className="overflow-hidden">
-          <CardHeader className="pb-3">
-            <CardTitle className="text-base">Files</CardTitle>
+      {/* File Tree + Code Viewer - fills the rest */}
+      <div className="flex-1 min-h-0 flex gap-3">
+        {/* File tree sidebar */}
+        <Card className="w-[220px] flex-shrink-0 flex flex-col overflow-hidden">
+          <CardHeader className="!p-3 flex-shrink-0">
+            <CardTitle className="!text-sm">Files</CardTitle>
           </CardHeader>
-          <CardContent className="p-0">
+          <div className="flex-1 min-h-0 overflow-y-auto">
             <FileTree
               files={allFiles}
               selectedFile={selectedFile}
               onSelectFile={setSelectedFile}
             />
-          </CardContent>
+          </div>
         </Card>
 
-        <Card className="overflow-hidden">
+        {/* Code viewer */}
+        <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {selectedFileData ? (
             <>
-              <CardHeader className="pb-3 flex flex-row items-center justify-between">
-                <CardTitle className="text-base">{selectedFileData.file_path}</CardTitle>
-                <Button size="sm" variant="outline" onClick={handleDownload}>
-                  <Download className="h-4 w-4 mr-2" />
+              <CardHeader className="!p-3 flex-shrink-0 flex flex-row items-center justify-between gap-2">
+                <CardTitle className="!text-sm truncate">{selectedFileData.file_path}</CardTitle>
+                <Button size="sm" variant="outline" onClick={handleDownload} className="flex-shrink-0">
+                  <Download className="h-3 w-3 mr-1" />
                   Download
                 </Button>
               </CardHeader>
-              <CardContent className="p-0">
+              <div className="flex-1 min-h-0 overflow-hidden">
                 <CodeViewer file={selectedFileData} />
-              </CardContent>
+              </div>
             </>
           ) : (
-            <CardContent className="flex items-center justify-center h-full">
+            <div className="flex-1 flex items-center justify-center">
               <div className="text-center text-muted-foreground">
                 <FileCode className="h-12 w-12 mx-auto mb-4 opacity-50" />
                 <p>Select a file to view</p>
               </div>
-            </CardContent>
+            </div>
           )}
         </Card>
       </div>
     </div>
   );
 };
-

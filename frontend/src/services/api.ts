@@ -62,11 +62,29 @@ export const projectsApi = {
   },
 
   /**
-   * Stream workflow execution (Server-Sent Events)
+   * Stream workflow execution (Server-Sent Events) - legacy
    */
   stream: (projectId: string): EventSource => {
     const url = `${API_BASE_URL}/projects/${projectId}/stream`;
     return new EventSource(url);
+  },
+
+  /**
+   * Subscribe to real-time workflow events (SSE).
+   * Returns an EventSource that emits agent_start, agent_complete,
+   * step_complete, workflow_complete, and workflow_error events.
+   */
+  events: (projectId: string): EventSource => {
+    const url = `${API_BASE_URL}/projects/${projectId}/events`;
+    return new EventSource(url);
+  },
+
+  /**
+   * Get full project workflow state including all artifacts.
+   */
+  getState: async (projectId: string): Promise<WorkflowState> => {
+    const response = await api.get<WorkflowState>(`/projects/${projectId}/state`);
+    return response.data;
   },
 };
 

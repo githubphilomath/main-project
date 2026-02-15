@@ -87,7 +87,7 @@ class ArchitectureAgent(BaseAgent):
 
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
-            design = json.loads(response)
+            design = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse architecture design", error=str(e))
             design = {

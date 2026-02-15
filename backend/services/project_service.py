@@ -102,13 +102,22 @@ class ProjectService:
         try:
             project = db.query(Project).filter(Project.id == project_id).first()
             if project:
-                project.status = "completed" if state.get("completed") else "in_progress"
                 current_phase = state.get("current_phase", "initialization")
                 # Handle both string and enum values
                 if hasattr(current_phase, "value"):
-                    project.current_phase = current_phase.value
+                    current_phase = current_phase.value
                 else:
-                    project.current_phase = str(current_phase)
+                    current_phase = str(current_phase)
+
+                project.current_phase = current_phase
+
+                # Determine project status from phase
+                if current_phase == "completed":
+                    project.status = "completed"
+                elif current_phase == "failed":
+                    project.status = "failed"
+                else:
+                    project.status = "in_progress"
                 project.state_data = state
                 project.updated_at = datetime.utcnow()
                 db.commit()

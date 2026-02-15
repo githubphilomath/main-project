@@ -42,7 +42,6 @@ class DebuggingAgent(BaseAgent):
             return self.update_state(
                 state,
                 {
-                    "current_phase": "testing",  # Move to next phase
                     "agent_decisions": state.get("agent_decisions", []) + [
                         self.create_decision(
                             decision="No code artifacts to debug",
@@ -132,7 +131,7 @@ class DebuggingAgent(BaseAgent):
             response = self.call_llm(
                 prompt, system_prompt, response_format, timeout=60
             )
-            debug_data = json.loads(response)
+            debug_data = self.parse_json_response(response)
             self.logger.info(
                 f"Debugging completed: found {len(debug_data.get('issues_found', []))} issues, "
                 f"fixed {len(debug_data.get('fixed_files', []))} files"
@@ -189,14 +188,12 @@ class DebuggingAgent(BaseAgent):
             confidence=0.8 if issues_count > 0 else 0.6,
         )
 
-        # Always transition to testing phase after debugging
+        # Let the orchestrator handle phase transitions
         return self.update_state(
             state,
             {
                 "code_artifacts": updated_artifacts,
                 "agent_decisions": state.get("agent_decisions", []) + [decision],
-                "current_phase": "testing",  # Explicitly set next phase
-                "next_agent": "testing",
             },
         )
 

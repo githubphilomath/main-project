@@ -1,6 +1,7 @@
 """Base agent class with common functionality."""
 
 import json
+import re
 import signal
 from abc import ABC, abstractmethod
 from contextlib import contextmanager
@@ -178,6 +179,63 @@ class BaseAgent(ABC):
                 timeout=timeout_seconds,
             )
             raise
+
+    def parse_json_response(self, text: str) -> Any:
+        """Parse a JSON response from the LLM, stripping markdown fences.
+
+        Gemini 2.5 often wraps JSON in markdown code fences like:
+            ```json
+            { ... }
+            ```
+        This helper strips those before parsing.
+
+        Args:
+            text: Raw LLM response text
+
+        Returns:
+            Parsed JSON object
+
+        Raises:
+            json.JSONDecodeError: If parsing fails after all attempts
+        """
+        if not text:
+            raise json.JSONDecodeError("Empty response", "", 0)
+
+        # Attempt 1: Try parsing directly (in case there are no fences)
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError:
+            pass
+
+        # Attempt 2: Strip markdown code fences  ```json ... ``` or ``` ... ```
+        stripped = text.strip()
+        fence_pattern = re.compile(
+            r"```(?:json|JSON)?\s*\n?(.*?)\n?\s*```",
+            re.DOTALL,
+        )
+        match = fence_pattern.search(stripped)
+        if match:
+            try:
+                return json.loads(match.group(1).strip())
+            except json.JSONDecodeError:
+                pass
+
+        # Attempt 3: Find the first { ... } or [ ... ] block
+        for start_char, end_char in [('{', '}'), ('[', ']')]:
+            start = stripped.find(start_char)
+            end = stripped.rfind(end_char)
+            if start != -1 and end > start:
+                try:
+                    return json.loads(stripped[start : end + 1])
+                except json.JSONDecodeError:
+                    pass
+
+        # All attempts failed
+        raise json.JSONDecodeError(
+            f"Could not extract JSON from LLM response (length={len(text)})",
+            text[:200],
+            0,
+        )
 
     def update_state(
         self,

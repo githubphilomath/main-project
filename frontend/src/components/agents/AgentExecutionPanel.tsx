@@ -14,7 +14,7 @@ import { AGENT_NAMES, AGENT_DISPLAY_NAMES, type AgentExecutionState, type AgentO
 import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
 
 export const AgentExecutionPanel: React.FC = () => {
-  const { currentProject, workflowState } = useStore();
+  const { currentProject, workflowState, setProjectStatus } = useStore();
   const [isExpanded, setIsExpanded] = useState(true);
   const [agentOutputs, setAgentOutputs] = useState<AgentExecutionState>({});
 
@@ -40,6 +40,14 @@ export const AgentExecutionPanel: React.FC = () => {
     enabled: !!currentProject,
     refetchInterval: 2000, // Poll every 2 seconds
   });
+
+  // Sync polled status into the Zustand store so OutputViewer and
+  // useWorkflowStream can react to it
+  useEffect(() => {
+    if (status) {
+      setProjectStatus(status);
+    }
+  }, [status, setProjectStatus]);
 
   // Update agent outputs from workflow state
   useEffect(() => {
@@ -150,37 +158,64 @@ export const AgentExecutionPanel: React.FC = () => {
 
     setAgentOutputs((prev) => {
       const updated = { ...prev };
-    const currentPhase = status.current_phase;
-    const phaseToAgent: Record<string, string> = {
-      initialization: 'orchestrator',
-      requirement_analysis: 'requirement_analysis',
-      architecture_design: 'architecture',
-      coding: 'coding',
-      debugging: 'debugging',
-      testing: 'testing',
-      documentation: 'documentation',
-      deployment: 'deployment',
-    };
+      const currentPhase = status.current_phase;
+      const projectStatus = status.status;
+      const phaseToAgent: Record<string, string> = {
+        initialization: 'orchestrator',
+        requirement_analysis: 'requirement_analysis',
+        architecture_design: 'architecture',
+        coding: 'coding',
+        debugging: 'debugging',
+        testing: 'testing',
+        documentation: 'documentation',
+        deployment: 'deployment',
+      };
 
-    const currentAgentName = phaseToAgent[currentPhase] || status.current_agent;
-    const phaseOrder = AGENT_NAMES;
+      const currentAgentName = phaseToAgent[currentPhase] || status.current_agent;
+      const phaseOrder = AGENT_NAMES;
 
-    phaseOrder.forEach((name) => {
-      const currentIndex = phaseOrder.indexOf(name);
-      const activeIndex = currentAgentName ? phaseOrder.indexOf(currentAgentName as any) : -1;
-
-      if (name === currentAgentName) {
-        updated[name] = {
-          ...updated[name],
-          status: status.status === 'completed' ? 'completed' : 'running',
-        };
-      } else if (currentIndex < activeIndex) {
-        updated[name] = {
-          ...updated[name],
-          status: 'completed',
-        };
+      // Handle terminal states: all agents completed or failed
+      if (projectStatus === 'completed' || currentPhase === 'completed') {
+        phaseOrder.forEach((name) => {
+          updated[name] = {
+            ...updated[name],
+            status: 'completed',
+          };
+        });
+        return updated;
       }
-    });
+
+      if (projectStatus === 'failed' || currentPhase === 'failed') {
+        const activeIndex = currentAgentName ? phaseOrder.indexOf(currentAgentName as any) : -1;
+        phaseOrder.forEach((name) => {
+          const idx = phaseOrder.indexOf(name);
+          if (idx < activeIndex) {
+            updated[name] = { ...updated[name], status: 'completed' };
+          } else if (name === currentAgentName) {
+            updated[name] = { ...updated[name], status: 'failed' };
+          }
+          // Leave others as pending
+        });
+        return updated;
+      }
+
+      // In-progress: mark agents before current as completed, current as running
+      phaseOrder.forEach((name) => {
+        const currentIndex = phaseOrder.indexOf(name);
+        const activeIndex = currentAgentName ? phaseOrder.indexOf(currentAgentName as any) : -1;
+
+        if (name === currentAgentName) {
+          updated[name] = {
+            ...updated[name],
+            status: 'running',
+          };
+        } else if (currentIndex < activeIndex) {
+          updated[name] = {
+            ...updated[name],
+            status: 'completed',
+          };
+        }
+      });
 
       return updated;
     });
@@ -200,31 +235,29 @@ export const AgentExecutionPanel: React.FC = () => {
       }).find(([phase]) => phase === status.current_phase)?.[1] : null);
 
   return (
-    <div className="h-full flex flex-col bg-gray-50 dark:bg-gray-900 border-l border-gray-200 dark:border-gray-800">
-      {/* Header */}
-      <div className="flex items-center justify-between p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+    <div className="h-full flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
+      {/* Header - fixed */}
+      <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-600 dark:text-blue-400" />
-          <h2 className="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Agent Execution Monitor
-          </h2>
+          <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <h2 className="text-sm font-semibold">Agent Execution Monitor</h2>
         </div>
         <button
           onClick={() => setIsExpanded(!isExpanded)}
-          className="p-1 rounded-md hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors"
+          className="p-1 rounded-md hover:bg-muted transition-colors"
           aria-label={isExpanded ? 'Collapse' : 'Expand'}
         >
           {isExpanded ? (
-            <ChevronDown className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <ChevronDown className="w-4 h-4 text-muted-foreground" />
           ) : (
-            <ChevronUp className="w-5 h-5 text-gray-600 dark:text-gray-400" />
+            <ChevronUp className="w-4 h-4 text-muted-foreground" />
           )}
         </button>
       </div>
 
-      {/* Workflow Progress */}
+      {/* Workflow Progress - fixed */}
       {isExpanded && (
-        <div className="p-4 border-b border-gray-200 dark:border-gray-800 bg-white dark:bg-gray-950">
+        <div className="flex-shrink-0 px-4 py-3 border-b">
           <WorkflowProgressBar
             progress={status?.progress || 0}
             currentPhase={status?.current_phase}
@@ -232,9 +265,9 @@ export const AgentExecutionPanel: React.FC = () => {
         </div>
       )}
 
-      {/* Agent Cards List */}
+      {/* Agent Cards List - scrollable */}
       {isExpanded && (
-        <div className="flex-1 overflow-y-auto p-4 space-y-3">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
           <AnimatePresence>
             {AGENT_NAMES.map((agentName, index) => {
               const agentData = agentOutputs[agentName];

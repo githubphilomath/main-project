@@ -88,7 +88,7 @@ class CodingAgent(BaseAgent):
 
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
-            code_data = json.loads(response)
+            code_data = self.parse_json_response(response)
             files = code_data.get("files", [])
         except Exception as e:
             self.logger.error("Failed to parse code generation", error=str(e))

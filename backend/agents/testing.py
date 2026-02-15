@@ -56,7 +56,7 @@ class TestingAgent(BaseAgent):
         Requirements: {json.dumps(requirements, indent=2)}
 
         Code Files:
-        {json.dumps([{'path': a.file_path, 'content': a.content[:500]} for a in code_artifacts], indent=2)}
+        {json.dumps([{'path': a.get('file_path', '') if isinstance(a, dict) else a.file_path, 'content': (a.get('content', '') if isinstance(a, dict) else a.content)[:500]} for a in code_artifacts], indent=2)}
 
         Best practices:
         {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
@@ -89,7 +89,7 @@ class TestingAgent(BaseAgent):
 
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
-            test_data = json.loads(response)
+            test_data = self.parse_json_response(response)
             test_files = test_data.get("test_files", [])
         except Exception as e:
             self.logger.error("Failed to parse test generation", error=str(e))

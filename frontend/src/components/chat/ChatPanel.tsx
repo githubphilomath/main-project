@@ -1,22 +1,26 @@
 /**
  * Chat Panel Component
  * Left panel for user interaction and chat messages
+ * Connects to SSE /events endpoint for real-time "thinking" updates
  */
 
-import React, { useState, useRef, useEffect } from 'react';
-import { Send, Loader2 } from 'lucide-react';
+import React, { useState, useRef, useEffect, useCallback } from 'react';
+import { Send, Loader2, Brain } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { MessageBubble } from './MessageBubble';
 import { useStore } from '@/store/useStore';
 import { projectsApi } from '@/services/api';
 import type { Message } from '@/types';
+import { AGENT_DISPLAY_NAMES } from '@/types';
 
 export const ChatPanel: React.FC = () => {
   const [input, setInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [thinkingMessage, setThinkingMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
-  const { messages, addMessage, setCurrentProject, setLoading } = useStore();
+  const eventSourceRef = useRef<EventSource | null>(null);
+  const { messages, addMessage, setCurrentProject, setLoading, setStreaming } = useStore();
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -24,7 +28,125 @@ export const ChatPanel: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages]);
+  }, [messages, thinkingMessage]);
+
+  // Clean up EventSource on unmount
+  useEffect(() => {
+    return () => {
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+        eventSourceRef.current = null;
+      }
+    };
+  }, []);
+
+  const connectToEvents = useCallback((projectId: string) => {
+    // Close any existing connection
+    if (eventSourceRef.current) {
+      eventSourceRef.current.close();
+    }
+
+    const es = projectsApi.events(projectId);
+    eventSourceRef.current = es;
+    setStreaming(true);
+
+    // agent_start: show thinking message
+    es.addEventListener('agent_start', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const agentName = data.agent;
+        const displayName = AGENT_DISPLAY_NAMES[agentName] || agentName;
+        const message = data.message || `${displayName} is working...`;
+        setThinkingMessage(message);
+      } catch { /* ignore parse errors */ }
+    });
+
+    // agent_complete: add verbose completion message to chat
+    es.addEventListener('agent_complete', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        const agentName = data.agent;
+        // Don't show orchestrator completions as they're internal routing decisions
+        if (agentName !== 'orchestrator') {
+          const msg: Message = {
+            id: `agent-${agentName}-${Date.now()}`,
+            role: 'assistant',
+            content: data.message || `**${AGENT_DISPLAY_NAMES[agentName] || agentName}** completed.`,
+            timestamp: new Date(),
+            projectId,
+          };
+          addMessage(msg);
+        }
+        setThinkingMessage(null);
+      } catch { /* ignore parse errors */ }
+    });
+
+    // agent_error: show error
+    es.addEventListener('agent_error', (e) => {
+      try {
+        const data = JSON.parse(e.data);
+        setThinkingMessage(null);
+        const msg: Message = {
+          id: `error-${data.agent}-${Date.now()}`,
+          role: 'system',
+          content: data.message || `Agent error: unknown`,
+          timestamp: new Date(),
+          projectId,
+        };
+        addMessage(msg);
+      } catch { /* ignore parse errors */ }
+    });
+
+    // workflow_complete
+    es.addEventListener('workflow_complete', () => {
+      setThinkingMessage(null);
+      setStreaming(false);
+      setLoading(false);
+      const msg: Message = {
+        id: `done-${Date.now()}`,
+        role: 'assistant',
+        content: 'Workflow completed successfully! All agents have finished their work.',
+        timestamp: new Date(),
+        projectId,
+      };
+      addMessage(msg);
+      es.close();
+      eventSourceRef.current = null;
+    });
+
+    // workflow_error
+    es.addEventListener('workflow_error', (e) => {
+      setThinkingMessage(null);
+      setStreaming(false);
+      setLoading(false);
+      let errorMsg = 'Workflow failed';
+      try {
+        const data = JSON.parse(e.data);
+        errorMsg = data.message || errorMsg;
+      } catch { /* use default */ }
+      const msg: Message = {
+        id: `wf-error-${Date.now()}`,
+        role: 'system',
+        content: `Workflow error: ${errorMsg}`,
+        timestamp: new Date(),
+        projectId,
+      };
+      addMessage(msg);
+      es.close();
+      eventSourceRef.current = null;
+    });
+
+    // Handle connection errors
+    es.onerror = () => {
+      // EventSource will auto-reconnect on non-fatal errors.
+      // On fatal close, just clean up.
+      if (es.readyState === EventSource.CLOSED) {
+        setThinkingMessage(null);
+        setStreaming(false);
+        eventSourceRef.current = null;
+      }
+    };
+  }, [addMessage, setLoading, setStreaming]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -66,8 +188,12 @@ export const ChatPanel: React.FC = () => {
 
       addMessage(assistantMessage);
 
-      // Execute workflow
+      // Connect to SSE events BEFORE firing execute so we don't miss events
+      connectToEvents(project.id);
+
+      // Execute workflow (fire-and-forget, returns immediately with 202)
       await projectsApi.execute(project.id);
+
     } catch (error) {
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -76,17 +202,17 @@ export const ChatPanel: React.FC = () => {
         timestamp: new Date(),
       };
       addMessage(errorMessage);
+      setLoading(false);
     } finally {
       setIsSubmitting(false);
-      setLoading(false);
     }
   };
 
   return (
-    <Card className="h-full flex flex-col">
-      <CardContent className="flex-1 flex flex-col p-0">
+    <Card className="h-full flex flex-col overflow-hidden">
+      <CardContent className="flex-1 min-h-0 flex flex-col p-0">
         {/* Messages Area */}
-        <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
@@ -100,10 +226,19 @@ export const ChatPanel: React.FC = () => {
           {messages.map((message) => (
             <MessageBubble key={message.id} message={message} />
           ))}
-          {isSubmitting && (
+
+          {/* Thinking indicator - shows current agent activity */}
+          {thinkingMessage && (
+            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 animate-pulse">
+              <Brain className="h-4 w-4" />
+              <span className="text-sm font-medium">{thinkingMessage}</span>
+            </div>
+          )}
+
+          {isSubmitting && !thinkingMessage && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Processing...</span>
+              <span className="text-sm">Creating project...</span>
             </div>
           )}
           <div ref={messagesEndRef} />

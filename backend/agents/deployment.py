@@ -84,7 +84,7 @@ class DeploymentAgent(BaseAgent):
 
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
-            deployment_config = json.loads(response)
+            deployment_config = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse deployment config", error=str(e))
             deployment_config = {

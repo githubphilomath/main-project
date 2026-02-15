@@ -74,7 +74,7 @@ class RequirementAnalysisAgent(BaseAgent):
         try:
             response = self.call_llm(prompt, system_prompt, response_format)
             # Parse JSON response
-            analysis = json.loads(response)
+            analysis = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse requirements analysis", error=str(e))
             analysis = {

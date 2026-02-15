@@ -43,18 +43,10 @@ class BaseRAG(ABC):
         # Initialize embeddings
         # Note: Google Generative AI embeddings may use different model names
         # Using text-embedding-004 or models/embedding-001
-        try:
-            self.embeddings = GoogleGenerativeAIEmbeddings(
-                model="models/embedding-001",  # Google's embedding model
-                google_api_key=self.settings.gemini_api_key,
-            )
-        except Exception as e:
-            self.logger.warning(f"Failed to initialize embeddings with models/embedding-001: {e}")
-            # Fallback to text-embedding-004
-            self.embeddings = GoogleGenerativeAIEmbeddings(
-                model="text-embedding-004",
-                google_api_key=self.settings.gemini_api_key,
-            )
+        self.embeddings = GoogleGenerativeAIEmbeddings(
+            model="models/gemini-embedding-001",
+            google_api_key=self.settings.gemini_api_key,
+        )
 
         # Get or create collection
         self.collection = self.client.get_or_create_collection(

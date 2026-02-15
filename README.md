@@ -97,6 +97,19 @@ docker-compose up -d
 
 This starts both backend and frontend services.
 
+### Quick run (branch `mariena-new` – Docker backend only)
+
+No local Python needed. Ensure `backend/.env` has `GEMINI_API_KEY` set.
+
+1. **Start backend** (Postgres + Chroma + API):
+   ```bash
+   ./run-backend.sh
+   ```
+   Or: `cd backend && docker-compose up -d postgres chroma api`
+
+2. **Frontend**: `cd frontend && npm install && cp .env.example .env && npm run dev`  
+   App: http://localhost:3000 · API: http://localhost:8000/docs
+
 ## 📖 Documentation
 
 - [Architecture Overview](ARCHITECTURE.md)

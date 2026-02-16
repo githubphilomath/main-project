@@ -1,21 +1,31 @@
 # Quick Start Guide
 
-Multi-Agent Autonomous Software Development Platform.  
+Multi-Agent Autonomous Software Development Platform.
 Branch: `mariena-new`
 
 ---
 
 ## Prerequisites
 
-| Tool            | Minimum version | Check with              |
-|-----------------|-----------------|-------------------------|
-| Docker Desktop  | 20+             | `docker --version`      |
-| Docker Compose  | 2.x             | `docker compose version`|
-| Node.js         | 18+             | `node -v`               |
-| npm             | 9+              | `npm -v`                |
-| Google Gemini API key | --        | [Get one here](https://makersuite.google.com/app/apikey) |
+| Tool                  | Minimum version | Check with                                            |
+| --------------------- | --------------- | ----------------------------------------------------- |
+| Docker Desktop        | 20+             | `docker --version`                                  |
+| Docker Compose        | 2.x             | `docker compose version`                            |
+| Node.js               | 18+             | `node -v`                                           |
+| npm                   | 9+              | `npm -v`                                            |
+| Google Gemini API key | --              | [Get one here](https://makersuite.google.com/app/apikey) |
 
 > **Python is NOT required locally.** The backend runs entirely inside Docker (Python 3.11).
+
+---
+
+## Step 0 -- Clone the repo ignore if you already have it. but checkout mariena-new anyways
+
+```bash
+git clone https://github.com/githubphilomath/main-project.git
+cd main-project
+git checkout mariena-new
+```
 
 ---
 
@@ -34,12 +44,12 @@ GEMINI_API_KEY=your_actual_gemini_api_key_here
 
 Leave everything else at the defaults. The key settings are:
 
-| Variable       | Default               | Notes                                      |
-|----------------|-----------------------|--------------------------------------------|
-| `GEMINI_API_KEY` | (you must set this) | Google AI Studio API key                   |
-| `GEMINI_MODEL` | `gemini-2.5-flash`    | Can also use `gemini-2.5-pro` (slower, smarter) |
-| `DATABASE_URL` | `postgresql://postgres:postgres@localhost:5432/agent_platform` | Used by local scripts only; Docker overrides this |
-| `CHROMA_PORT`  | `8010`                | Host port for ChromaDB (8000 is used by the API) |
+| Variable           | Default                                                          | Notes                                             |
+| ------------------ | ---------------------------------------------------------------- | ------------------------------------------------- |
+| `GEMINI_API_KEY` | (you must set this)                                              | Google AI Studio API key                          |
+| `GEMINI_MODEL`   | `gemini-2.5-flash`                                             | Can also use `gemini-2.5-pro` (slower, smarter) |
+| `DATABASE_URL`   | `postgresql://postgres:postgres@localhost:5432/agent_platform` | Used by local scripts only; Docker overrides this |
+| `CHROMA_PORT`    | `8010`                                                         | Host port for ChromaDB (8000 is used by the API)  |
 
 ---
 
@@ -60,13 +70,13 @@ docker compose up -d postgres chroma api
 
 This starts three containers:
 
-| Container                 | Port  | What it does              |
-|---------------------------|-------|---------------------------|
-| `agent_platform_postgres` | 5432  | PostgreSQL 15 database    |
-| `agent_platform_chroma`   | 8010  | ChromaDB vector store     |
-| `agent_platform_api`      | 8000  | FastAPI backend           |
+| Container                   | Port | What it does           |
+| --------------------------- | ---- | ---------------------- |
+| `agent_platform_postgres` | 5432 | PostgreSQL 15 database |
+| `agent_platform_chroma`   | 8010 | ChromaDB vector store  |
+| `agent_platform_api`      | 8000 | FastAPI backend        |
 
-**First run** takes 2-3 minutes (Docker builds the image and installs Python packages).  
+**First run** takes 2-3 minutes (Docker builds the image and installs Python packages).
 Subsequent starts take ~10 seconds.
 
 ### Verify the backend is running
@@ -98,8 +108,7 @@ The frontend starts at **http://localhost:3000**.
 ## Step 4 -- Use the app
 
 1. Open http://localhost:3000
-2. Type a project description in the chat panel, e.g.:  
-   `create a tic tac toe game in python`
+2. Type a project description in the chat panel, e.g.:`create a tic tac toe game in python`
 3. Press Enter (or click Send)
 4. Watch the agents work in real-time:
    - **Left panel**: Chat with live "thinking" indicators and agent summaries
@@ -131,6 +140,7 @@ To stop the frontend, press `Ctrl+C` in the terminal running `npm run dev`.
 ### Backend won't start / API unhealthy
 
 **Check container status:**
+
 ```bash
 cd backend
 docker compose ps
@@ -144,27 +154,28 @@ docker compose logs api --tail 50
 
 **Common causes:**
 
-| Symptom | Cause | Fix |
-|---------|-------|-----|
-| `ModuleNotFoundError` | Image not built | `docker compose build api` then `docker compose up -d api` |
-| `GEMINI_API_KEY` error | Missing or invalid key | Check `backend/.env` has a valid key |
-| `port 5432 already in use` | Local PostgreSQL running | Stop it: `brew services stop postgresql` or change the port in `docker-compose.yml` |
-| `port 8000 already in use` | Another process on 8000 | `lsof -i :8000` to find it, then kill or change port |
+| Symptom                      | Cause                    | Fix                                                                                    |
+| ---------------------------- | ------------------------ | -------------------------------------------------------------------------------------- |
+| `ModuleNotFoundError`      | Image not built          | `docker compose build api` then `docker compose up -d api`                         |
+| `GEMINI_API_KEY` error     | Missing or invalid key   | Check `backend/.env` has a valid key                                                 |
+| `port 5432 already in use` | Local PostgreSQL running | Stop it:`brew services stop postgresql` or change the port in `docker-compose.yml` |
+| `port 8000 already in use` | Another process on 8000  | `lsof -i :8000` to find it, then kill or change port                                 |
 
 ### "Orchestrator stuck" / workflow never progresses
 
 **Check API logs:**
+
 ```bash
 cd backend
 docker compose logs api --tail 100
 ```
 
-| Log message | Cause | Fix |
-|-------------|-------|-----|
-| `404 models/gemini-pro is not found` | Outdated model name | Set `GEMINI_MODEL=gemini-2.5-flash` in `backend/.env`, then `docker compose restart api` |
+| Log message                               | Cause                    | Fix                                                                                                                 |
+| ----------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
+| `404 models/gemini-pro is not found`    | Outdated model name      | Set `GEMINI_MODEL=gemini-2.5-flash` in `backend/.env`, then `docker compose restart api`                      |
 | `404 models/embedding-001 is not found` | Outdated embedding model | Already fixed in code (`gemini-embedding-001`). If still appearing: `docker compose up -d --force-recreate api` |
-| `Recursion limit of 25 reached` | Graph never terminated | Already fixed (limit raised to 50, routing reordered). Rebuild: `docker compose up -d --force-recreate api` |
-| `Expecting value: line 1 column 1` | JSON parsing failure | Already fixed (`parse_json_response` strips markdown fences). Rebuild if needed. |
+| `Recursion limit of 25 reached`         | Graph never terminated   | Already fixed (limit raised to 50, routing reordered). Rebuild:`docker compose up -d --force-recreate api`        |
+| `Expecting value: line 1 column 1`      | JSON parsing failure     | Already fixed (`parse_json_response` strips markdown fences). Rebuild if needed.                                  |
 
 ### .env changes not taking effect
 
@@ -212,15 +223,15 @@ The free tier of the Gemini API has rate limits. If you see `429 Resource Exhaus
 
 Base URL: `http://localhost:8000/api/v1`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/projects` | Create a new project |
-| `GET`  | `/projects/{id}` | Get project details |
+| Method   | Endpoint                   | Description                                      |
+| -------- | -------------------------- | ------------------------------------------------ |
+| `POST` | `/projects`              | Create a new project                             |
+| `GET`  | `/projects/{id}`         | Get project details                              |
 | `POST` | `/projects/{id}/execute` | Start workflow (returns 202, runs in background) |
-| `GET`  | `/projects/{id}/status` | Get project status + progress |
-| `GET`  | `/projects/{id}/state` | Get full state with all artifacts |
-| `GET`  | `/projects/{id}/events` | SSE stream of real-time agent events |
-| `GET`  | `/health` | Health check |
+| `GET`  | `/projects/{id}/status`  | Get project status + progress                    |
+| `GET`  | `/projects/{id}/state`   | Get full state with all artifacts                |
+| `GET`  | `/projects/{id}/events`  | SSE stream of real-time agent events             |
+| `GET`  | `/health`                | Health check                                     |
 
 Full Swagger docs: http://localhost:8000/docs
 

@@ -46,7 +46,8 @@ class DocumentationAgent(BaseAgent):
 
         # Build prompt
         system_prompt = """You are a technical writer. Generate comprehensive
-        documentation for the project."""
+        project documentation. Documentation is mandatory and must always accompany
+        the codebase. Never skip documentation."""
         prompt = f"""
         Generate documentation for the following project:
 
@@ -59,16 +60,19 @@ class DocumentationAgent(BaseAgent):
         Best practices:
         {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
 
-        Generate the following documentation:
-        1. README.md - Project overview, setup, usage
+        ALWAYS generate the following documentation (do not skip any):
+        1. README.md - Project overview, setup instructions, usage, and examples
         2. ARCHITECTURE.md - System architecture documentation
-        3. API_DOCS.md - API documentation (if applicable)
+        3. API_DOCS.md - API documentation (if the project has APIs; otherwise CONTRIBUTING.md)
 
         Provide a JSON response with:
         - docs: List of documentation files, each with:
-          - doc_type: README/ARCHITECTURE/API_DOCS
-          - content: Documentation content
+          - doc_type: README/ARCHITECTURE/API_DOCS/CONTRIBUTING
+          - content: Complete documentation content
           - description: What this doc covers
+
+        Documentation must always be generated alongside code. Include setup, usage,
+        and clear explanations.
         """
 
         response_format = {
@@ -87,6 +91,11 @@ class DocumentationAgent(BaseAgent):
             docs = doc_data.get("docs", [])
         except Exception as e:
             self.logger.error("Failed to parse documentation", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             docs = []
 
         # Create documentation artifacts

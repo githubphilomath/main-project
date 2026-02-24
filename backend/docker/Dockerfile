@@ -20,7 +20,9 @@ COPY . .
 
 # Entrypoint runs init_db then the main command
 COPY docker/entrypoint.sh /entrypoint.sh
+RUN sed -i 's/\r$//' /entrypoint.sh
 RUN chmod +x /entrypoint.sh
+
 
 # Expose port
 EXPOSE 8000

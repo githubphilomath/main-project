@@ -77,6 +77,11 @@ class RequirementAnalysisAgent(BaseAgent):
             analysis = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse requirements analysis", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             analysis = {
                 "functional_requirements": [],
                 "non_functional_requirements": [],

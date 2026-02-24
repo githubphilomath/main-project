@@ -49,7 +49,9 @@ class TestingAgent(BaseAgent):
 
         # Build prompt
         system_prompt = """You are a senior test engineer. Generate comprehensive
-        test suites for the code."""
+        test suites for the code. Every test file MUST include documentation:
+        module docstring, test class docstrings, and docstrings for each test
+        method describing what is being tested. Documentation goes with the code."""
         prompt = f"""
         Generate tests for the following code:
 
@@ -66,10 +68,14 @@ class TestingAgent(BaseAgent):
         - Integration tests
         - End-to-end tests (if applicable)
 
+        REQUIRED: Each test file MUST have documentation: module docstring, class
+        docstrings, and docstrings for each test describing what it validates.
+        Test content must include these docstrings.
+
         Provide a JSON response with:
         - test_files: List of test files, each with:
           - file_path: Test file path
-          - content: Test file content
+          - content: Test file content (with docstrings and comments)
           - test_type: unit/integration/e2e
           - coverage_estimate: Estimated coverage percentage
           - description: What is being tested
@@ -93,6 +99,11 @@ class TestingAgent(BaseAgent):
             test_files = test_data.get("test_files", [])
         except Exception as e:
             self.logger.error("Failed to parse test generation", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             test_files = []
 
         # Create test artifacts

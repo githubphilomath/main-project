@@ -10,7 +10,6 @@ import { WorkflowGraph } from './WorkflowGraph';
 import { useStore } from '@/store/useStore';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/services/api';
-import { AGENT_DISPLAY_NAMES, PHASE_PROGRESS } from '@/types';
 
 export const AgentStatusPanel: React.FC = () => {
   const { currentProject, agents, setProjectStatus, updateAgentStatus } = useStore();

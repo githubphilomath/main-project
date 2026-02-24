@@ -27,7 +27,7 @@ if not exist "venv\Scripts\uvicorn.exe" (
 REM Check if .env exists
 if not exist ".env" (
     echo Warning: .env file not found!
-    echo Copy env.example to .env and add your GEMINI_API_KEY
+    echo Copy env.example to .env and add your AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
     echo.
 )
 

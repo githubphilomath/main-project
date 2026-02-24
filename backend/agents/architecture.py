@@ -90,6 +90,11 @@ class ArchitectureAgent(BaseAgent):
             design = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse architecture design", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             design = {
                 "architecture_pattern": "monolithic",
                 "technology_stack": [],

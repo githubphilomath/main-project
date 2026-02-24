@@ -7,7 +7,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { Progress } from '@/components/ui/Progress';
 import { CheckCircle2, Circle } from 'lucide-react';
-import { AGENT_NAMES, AGENT_DISPLAY_NAMES, PHASE_PROGRESS } from '@/types';
+import { AGENT_DISPLAY_NAMES, PHASE_PROGRESS } from '@/types';
 
 interface WorkflowProgressBarProps {
   progress: number;

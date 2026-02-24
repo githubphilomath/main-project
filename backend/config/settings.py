@@ -16,9 +16,12 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    # LLM Configuration
+    # Azure OpenAI Configuration (chat only) - loaded via config/azure_openai.py with os.getenv fallbacks
+    azure_openai_chat_deployment: str = "gpt-4"
+
+    # Gemini Configuration (embeddings only)
     gemini_api_key: str
-    gemini_model: str = "gemini-2.5-flash"
+    embedding_model: str = "models/gemini-embedding-001"
 
     # Database Configuration
     database_url: str
@@ -49,7 +52,6 @@ class Settings(BaseSettings):
     # RAG Configuration
     rag_top_k: int = 5
     rag_similarity_threshold: float = 0.7
-    embedding_model: str = "gemini-embedding-001"
 
     @property
     def chroma_client_settings(self) -> dict:

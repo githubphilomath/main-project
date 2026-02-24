@@ -8,7 +8,7 @@ Backend API and agent orchestration system.
    ```bash
    cd backend
    cp env.example .env
-   # Edit .env with your GEMINI_API_KEY
+   # Edit .env with your AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT
    ```
 
 2. **Start Services**:

@@ -4,7 +4,7 @@ services:
     container_name: agent_platform_postgres
     environment:
       POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
+      POSTGRES_HOST_AUTH_METHOD: trust
       POSTGRES_DB: agent_platform
     ports:
       - "5432:5432"

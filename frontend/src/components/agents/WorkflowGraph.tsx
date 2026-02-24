@@ -7,7 +7,7 @@ import React from 'react';
 import { motion } from 'framer-motion';
 import { CheckCircle2, Circle, ArrowRight } from 'lucide-react';
 import { cn } from '@/utils/cn';
-import { PHASE_PROGRESS, AGENT_DISPLAY_NAMES } from '@/types';
+import { AGENT_DISPLAY_NAMES } from '@/types';
 
 interface WorkflowGraphProps {
   currentPhase: string;
@@ -25,7 +25,7 @@ const WORKFLOW_STEPS = [
 ];
 
 export const WorkflowGraph: React.FC<WorkflowGraphProps> = ({ currentPhase }) => {
-  const getStepStatus = (phase: string, index: number) => {
+  const getStepStatus = (_phase: string, index: number) => {
     const currentIndex = WORKFLOW_STEPS.findIndex((s) => s.phase === currentPhase);
     
     if (currentPhase === 'completed') return 'completed';

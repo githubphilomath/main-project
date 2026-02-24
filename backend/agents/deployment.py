@@ -44,7 +44,8 @@ class DeploymentAgent(BaseAgent):
 
         # Build prompt
         system_prompt = """You are a DevOps engineer. Create deployment configurations
-        for the project."""
+        for the project. Documentation is required: include comments in config files
+        and clear deployment instructions. Documentation goes with the code/config."""
         prompt = f"""
         Create deployment configuration for the following project:
 
@@ -57,10 +58,13 @@ class DeploymentAgent(BaseAgent):
         {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
 
         Generate deployment configuration including:
-        - Docker configuration (Dockerfile, docker-compose.yml)
-        - CI/CD pipeline configuration
-        - Environment variables
-        - Deployment instructions
+        - Docker configuration (Dockerfile, docker-compose.yml) with inline comments
+        - CI/CD pipeline configuration with comments
+        - Environment variables with descriptions
+        - Clear, step-by-step deployment instructions
+
+        REQUIRED: All config files and instructions must be documented. Include comments
+        in Dockerfile and YAML explaining each section. Deployment steps must be clear.
 
         Provide a JSON response with:
         - deployment_type: Type of deployment (docker/kubernetes/etc.)
@@ -87,6 +91,11 @@ class DeploymentAgent(BaseAgent):
             deployment_config = self.parse_json_response(response)
         except Exception as e:
             self.logger.error("Failed to parse deployment config", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             deployment_config = {
                 "deployment_type": "docker",
                 "dockerfile": "",

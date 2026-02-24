@@ -26,7 +26,7 @@ if (-not (Test-Path "venv\Scripts\uvicorn.exe")) {
 # Check if .env exists
 if (-not (Test-Path ".env")) {
     Write-Host "⚠️  Warning: .env file not found!" -ForegroundColor Yellow
-    Write-Host "Copy env.example to .env and add your GEMINI_API_KEY" -ForegroundColor Yellow
+    Write-Host "Copy env.example to .env and add your AZURE_OPENAI_API_KEY and AZURE_OPENAI_ENDPOINT" -ForegroundColor Yellow
     Write-Host ""
 }
 

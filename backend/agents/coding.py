@@ -53,7 +53,13 @@ class CodingAgent(BaseAgent):
 
         # Build prompt
         system_prompt = f"""You are a senior software engineer. Generate production-quality
-        code based on the architecture design. Use {framework or 'best practices'}."""
+        code based on the architecture design. Use {framework or 'best practices'}.
+
+        CRITICAL: Documentation is mandatory. Every file, class, and function MUST include
+        documentation. Include: (1) module-level docstring at top of each file, (2) class
+        docstrings, (3) function/method docstrings with args, returns, and raises where
+        applicable, (4) inline comments for non-obvious logic. Never generate code without
+        documentation."""
         prompt = f"""
         Generate code for the following project:
 
@@ -70,9 +76,12 @@ class CodingAgent(BaseAgent):
         Generate code files for all system components. Provide a JSON response with:
         - files: List of code files, each with:
           - file_path: Relative file path
-          - content: Complete file content
+          - content: Complete file content (MUST include docstrings and comments)
           - language: Programming language
           - description: What this file does
+
+        REQUIRED: Every code file MUST have documentation: module docstring, class and
+        function docstrings, and comments for complex logic. Documentation goes with the code.
         """
 
         response_format = {
@@ -92,6 +101,11 @@ class CodingAgent(BaseAgent):
             files = code_data.get("files", [])
         except Exception as e:
             self.logger.error("Failed to parse code generation", error=str(e))
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             files = []
 
         # Create code artifacts

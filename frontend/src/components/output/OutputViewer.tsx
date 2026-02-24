@@ -1,19 +1,22 @@
 /**
  * Output Viewer Component
- * Center panel displaying generated project files
+ * Center panel displaying generated project files with Code | Doc | Preview toggle
  */
 
 import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { FileTree } from './FileTree';
-import { CodeViewer } from './CodeViewer';
+import { CodeViewer, type ViewMode } from './CodeViewer';
+import { LivePreview } from './LivePreview';
 import { useStore } from '@/store/useStore';
-import { Download, FileCode, FileText, TestTube } from 'lucide-react';
+import { Download, FileCode, FileText, TestTube, Code, FileType, Monitor } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
+import { cn } from '@/utils/cn';
 
 export const OutputViewer: React.FC = () => {
   const { workflowState, projectStatus } = useStore();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
+  const [viewMode, setViewMode] = useState<ViewMode>('code');
 
   const codeArtifacts = workflowState?.code_artifacts || [];
   const testArtifacts = workflowState?.test_artifacts || [];
@@ -30,6 +33,7 @@ export const OutputViewer: React.FC = () => {
   ];
 
   const selectedFileData = allFiles.find((f) => f.file_path === selectedFile);
+  const isHtml = selectedFileData?.file_path?.endsWith('.html') || selectedFileData?.file_path?.endsWith('.htm');
 
   const handleDownload = () => {
     if (!selectedFileData) return;
@@ -114,19 +118,51 @@ export const OutputViewer: React.FC = () => {
           </div>
         </Card>
 
-        {/* Code viewer */}
+        {/* Code / Doc / Preview viewer */}
         <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
           {selectedFileData ? (
             <>
-              <CardHeader className="!p-3 flex-shrink-0 flex flex-row items-center justify-between gap-2">
-                <CardTitle className="!text-sm truncate">{selectedFileData.file_path}</CardTitle>
-                <Button size="sm" variant="outline" onClick={handleDownload} className="flex-shrink-0">
-                  <Download className="h-3 w-3 mr-1" />
-                  Download
-                </Button>
+              <CardHeader className="!p-3 flex-shrink-0 flex flex-col gap-2">
+                <div className="flex flex-row items-center justify-between gap-2">
+                  <CardTitle className="!text-sm truncate">{selectedFileData.file_path}</CardTitle>
+                  <Button size="sm" variant="outline" onClick={handleDownload} className="flex-shrink-0">
+                    <Download className="h-3 w-3 mr-1" />
+                    Download
+                  </Button>
+                </div>
+                {/* View mode toggle */}
+                <div className="flex gap-1">
+                  {(['code', 'doc', 'preview'] as const).map((mode) => (
+                    <button
+                      key={mode}
+                      onClick={() => setViewMode(mode)}
+                      className={cn(
+                        'flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors',
+                        viewMode === mode
+                          ? 'bg-primary text-primary-foreground'
+                          : 'bg-muted hover:bg-muted/80 text-muted-foreground'
+                      )}
+                    >
+                      {mode === 'code' && <Code className="h-3.5 w-3.5" />}
+                      {mode === 'doc' && <FileType className="h-3.5 w-3.5" />}
+                      {mode === 'preview' && <Monitor className="h-3.5 w-3.5" />}
+                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                    </button>
+                  ))}
+                </div>
               </CardHeader>
               <div className="flex-1 min-h-0 overflow-hidden">
-                <CodeViewer file={selectedFileData} />
+                {viewMode === 'preview' ? (
+                  isHtml ? (
+                    <LivePreview html={selectedFileData.content} />
+                  ) : (
+                    <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                      Live preview available for HTML files only. Select an .html file.
+                    </div>
+                  )
+                ) : (
+                  <CodeViewer file={selectedFileData} mode={viewMode} />
+                )}
               </div>
             </>
           ) : (

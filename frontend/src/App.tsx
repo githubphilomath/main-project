@@ -2,7 +2,7 @@
  * Main App Component
  */
 
-import React, { useEffect } from 'react';
+import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MainLayout } from '@/layouts/MainLayout';
 import { useWorkflowStream } from '@/hooks/useWorkflowStream';

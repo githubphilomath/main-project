@@ -57,9 +57,10 @@ export const MessageBubble: React.FC<MessageBubbleProps> = ({ message }) => {
               remarkPlugins={[remarkGfm]}
               rehypePlugins={[rehypeHighlight]}
               components={{
-                code: ({ node, inline, className, children, ...props }) => {
+                code: ({ node, className, children, ...props }) => {
                   const match = /language-(\w+)/.exec(className || '');
-                  return !inline && match ? (
+                  const isInline = !match || !className;
+                  return !isInline && match ? (
                     <pre className="bg-black/50 rounded-lg p-4 overflow-x-auto">
                       <code className={className} {...props}>
                         {children}

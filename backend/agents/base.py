@@ -9,9 +9,9 @@ from concurrent.futures import ThreadPoolExecutor, TimeoutError as FutureTimeout
 from datetime import datetime
 from typing import Any, Dict, Optional
 
-from langchain_google_genai import ChatGoogleGenerativeAI
 from tenacity import retry, stop_after_attempt, wait_exponential
 
+from config.azure_openai import get_azure_openai_client
 from config.settings import get_settings
 from core.state import AgentState
 from rag import ApprovalVersionRAG, KnowledgeBaseRAG, ProjectMemoryRAG
@@ -34,14 +34,6 @@ class BaseAgent(ABC):
         self.description = description
         self.settings = get_settings()
         self.logger = get_logger(f"agent.{name}")
-
-        # Initialize LLM with timeout
-        self.llm = ChatGoogleGenerativeAI(
-            model=self.settings.gemini_model,
-            google_api_key=self.settings.gemini_api_key,
-            temperature=0.7,
-            timeout=self.settings.agent_timeout,  # Add timeout
-        )
 
         # Initialize RAG systems
         self.knowledge_rag = KnowledgeBaseRAG()
@@ -133,26 +125,33 @@ class BaseAgent(ABC):
             LLM response
         """
         timeout_seconds = timeout or self.settings.agent_timeout
-        
-        try:
-            full_prompt = prompt
-            if system_prompt:
-                full_prompt = f"{system_prompt}\n\n{prompt}"
 
+        try:
+            user_content = prompt
             if response_format:
-                full_prompt += f"\n\nRespond in JSON format: {json.dumps(response_format)}"
+                user_content += f"\n\nRespond in JSON format: {json.dumps(response_format)}"
+
+            messages = []
+            if system_prompt:
+                messages.append({"role": "system", "content": system_prompt})
+            messages.append({"role": "user", "content": user_content})
 
             self.logger.info(
                 "Calling LLM",
                 agent=self.name,
-                prompt_length=len(full_prompt),
+                prompt_length=len(user_content),
                 timeout=timeout_seconds,
             )
 
-            # Use invoke with timeout handling via ThreadPoolExecutor
+            client = get_azure_openai_client()
+
             def invoke_llm():
-                return self.llm.invoke(full_prompt)
-            
+                return client.chat.completions.create(
+                    model=self.settings.azure_openai_chat_deployment,
+                    messages=messages,
+                    temperature=0.7,
+                )
+
             with ThreadPoolExecutor(max_workers=1) as executor:
                 future = executor.submit(invoke_llm)
                 try:
@@ -165,11 +164,15 @@ class BaseAgent(ABC):
                     raise TimeoutError(
                         f"LLM call exceeded timeout of {timeout_seconds} seconds"
                     )
-            
-            if not response or not hasattr(response, 'content'):
+
+            if not response or not response.choices:
                 raise ValueError("Empty or invalid LLM response")
-                
-            return response.content
+
+            content = response.choices[0].message.content
+            if not content:
+                raise ValueError("Empty LLM response content")
+
+            return content
 
         except Exception as e:
             self.logger.error(
@@ -180,10 +183,23 @@ class BaseAgent(ABC):
             )
             raise
 
+    def _is_auth_error(self, e: Exception) -> bool:
+        """Check if exception is an authentication/credential error."""
+        err_str = str(e).lower()
+        return (
+            "401" in err_str
+            or "403" in err_str
+            or "permissiondenied" in err_str
+            or "authentication" in err_str
+            or "invalid subscription key" in err_str
+            or "api key not valid" in err_str
+            or "invalid api key" in err_str
+        )
+
     def parse_json_response(self, text: str) -> Any:
         """Parse a JSON response from the LLM, stripping markdown fences.
 
-        Gemini 2.5 often wraps JSON in markdown code fences like:
+        LLMs often wrap JSON in markdown code fences like:
             ```json
             { ... }
             ```

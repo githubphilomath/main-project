@@ -40,9 +40,7 @@ class BaseRAG(ABC):
             )
             self.logger.info("Using ChromaDB HttpClient (server mode)")
 
-        # Initialize embeddings
-        # Note: Google Generative AI embeddings may use different model names
-        # Using text-embedding-004 or models/embedding-001
+        # Initialize embeddings (keep exact Gemini model)
         self.embeddings = GoogleGenerativeAIEmbeddings(
             model="models/gemini-embedding-001",
             google_api_key=self.settings.gemini_api_key,

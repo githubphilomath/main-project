@@ -65,7 +65,7 @@ const statusConfig = {
 };
 
 export const AgentCard: React.FC<AgentCardProps> = ({
-  agentName,
+  agentName: _agentName,
   displayName,
   output,
   logs,
@@ -149,7 +149,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
           {/* Progress Bar */}
           {status === 'running' && (
             <div className="mt-3">
-              <Progress value={undefined} className="h-1" />
+              <Progress value={0} className="h-1" />
             </div>
           )}
         </CardHeader>

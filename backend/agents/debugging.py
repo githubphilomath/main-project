@@ -70,7 +70,8 @@ class DebuggingAgent(BaseAgent):
 
         # Build prompt with limited content to prevent timeout
         system_prompt = """You are a senior debugging engineer. Analyze code for issues
-        and provide fixes. Keep responses concise."""
+        and provide fixes. Keep responses concise. When fixing code, preserve or add
+        docstrings and comments; documentation must stay with the code."""
         
         # Limit content size per file (max 2000 chars per file)
         code_summaries = []
@@ -108,7 +109,8 @@ class DebuggingAgent(BaseAgent):
           - description: Description of issue (max 200 chars)
           - severity: high/medium/low
           - fix: Suggested fix (max 500 chars)
-        - fixed_files: List of fixed files with updated content (only critical fixes)
+        - fixed_files: List of fixed files with updated content (only critical fixes).
+          Preserve existing docstrings and comments; add documentation if missing.
         """
 
         response_format = {
@@ -142,7 +144,11 @@ class DebuggingAgent(BaseAgent):
                 error=str(e),
                 project_id=state["project_id"],
             )
-            # Continue with empty results rather than failing
+            if self._is_auth_error(e):
+                raise RuntimeError(
+                    "Azure OpenAI authentication failed. Check AZURE_OPENAI_API_KEY and "
+                    "AZURE_OPENAI_ENDPOINT in backend/.env"
+                ) from e
             debug_data = {"issues_found": [], "fixed_files": []}
 
         # Update code artifacts with fixes

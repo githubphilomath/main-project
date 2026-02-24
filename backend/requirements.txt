@@ -19,7 +19,7 @@ alembic==1.12.1
 chromadb==0.4.18
 
 # LLM Provider
-google-generativeai==0.3.2
+openai>=1.12.0
 
 # Utilities
 python-dotenv==1.0.0

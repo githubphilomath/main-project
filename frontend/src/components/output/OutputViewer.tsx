@@ -8,13 +8,14 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { FileTree } from './FileTree';
 import { CodeViewer, type ViewMode } from './CodeViewer';
 import { LivePreview } from './LivePreview';
+import { FullAppPreview } from './FullAppPreview';
 import { useStore } from '@/store/useStore';
-import { Download, FileCode, FileText, TestTube, Code, FileType, Monitor } from 'lucide-react';
+import { Download, FileCode, FileText, TestTube, Code, FileType, Monitor, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/utils/cn';
 
 export const OutputViewer: React.FC = () => {
-  const { workflowState, projectStatus } = useStore();
+  const { workflowState, projectStatus, currentProject } = useStore();
   const [selectedFile, setSelectedFile] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<ViewMode>('code');
 
@@ -118,21 +119,25 @@ export const OutputViewer: React.FC = () => {
           </div>
         </Card>
 
-        {/* Code / Doc / Preview viewer */}
+        {/* Code / Doc / Preview / Full App viewer */}
         <Card className="flex-1 min-w-0 flex flex-col overflow-hidden">
-          {selectedFileData ? (
+          {(selectedFileData || (viewMode === 'app' && allFiles.length > 0)) ? (
             <>
               <CardHeader className="!p-3 flex-shrink-0 flex flex-col gap-2">
                 <div className="flex flex-row items-center justify-between gap-2">
-                  <CardTitle className="!text-sm truncate">{selectedFileData.file_path}</CardTitle>
-                  <Button size="sm" variant="outline" onClick={handleDownload} className="flex-shrink-0">
-                    <Download className="h-3 w-3 mr-1" />
-                    Download
-                  </Button>
+                  <CardTitle className="!text-sm truncate">
+                    {viewMode === 'app' ? 'Full Application Preview' : selectedFileData?.file_path}
+                  </CardTitle>
+                  {viewMode !== 'app' && selectedFileData && (
+                    <Button size="sm" variant="outline" onClick={handleDownload} className="flex-shrink-0">
+                      <Download className="h-3 w-3 mr-1" />
+                      Download
+                    </Button>
+                  )}
                 </div>
                 {/* View mode toggle */}
-                <div className="flex gap-1">
-                  {(['code', 'doc', 'preview'] as const).map((mode) => (
+                <div className="flex gap-1 flex-wrap">
+                  {(['code', 'doc', 'preview', 'app'] as const).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode)}
@@ -146,22 +151,37 @@ export const OutputViewer: React.FC = () => {
                       {mode === 'code' && <Code className="h-3.5 w-3.5" />}
                       {mode === 'doc' && <FileType className="h-3.5 w-3.5" />}
                       {mode === 'preview' && <Monitor className="h-3.5 w-3.5" />}
-                      {mode.charAt(0).toUpperCase() + mode.slice(1)}
+                      {mode === 'app' && <Globe className="h-3.5 w-3.5" />}
+                      {mode === 'app' ? 'Full App' : mode.charAt(0).toUpperCase() + mode.slice(1)}
                     </button>
                   ))}
                 </div>
               </CardHeader>
               <div className="flex-1 min-h-0 overflow-hidden">
-                {viewMode === 'preview' ? (
-                  isHtml ? (
+                {viewMode === 'app' ? (
+                  <FullAppPreview projectId={workflowState?.project_id || currentProject?.id} />
+                ) : viewMode === 'preview' ? (
+                  selectedFileData && isHtml ? (
                     <LivePreview html={selectedFileData.content} />
                   ) : (
-                    <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
-                      Live preview available for HTML files only. Select an .html file.
+                    <div className="h-full flex flex-col items-center justify-center text-center p-6 gap-4">
+                      <p className="text-muted-foreground text-sm max-w-md">
+                        Single-file preview is for HTML files. For the complete working application,
+                        use <strong>Full App</strong> — it runs the entire generated app with all
+                        files, backend, and assets.
+                      </p>
+                      <Button size="sm" onClick={() => setViewMode('app')}>
+                        <Globe className="h-3.5 w-3.5 mr-1.5" />
+                        Switch to Full App Preview
+                      </Button>
                     </div>
                   )
-                ) : (
+                ) : selectedFileData ? (
                   <CodeViewer file={selectedFileData} mode={viewMode} />
+                ) : (
+                  <div className="h-full flex items-center justify-center text-muted-foreground text-sm">
+                    Select a file for code or doc view
+                  </div>
                 )}
               </div>
             </>

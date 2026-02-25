@@ -34,6 +34,7 @@ services:
     container_name: agent_platform_api
     ports:
       - "8000:8000"
+      - "9001-9010:9001-9010"
     environment:
       - DATABASE_URL=postgresql://postgres:postgres@postgres:5432/agent_platform
       - CHROMA_HOST=chroma

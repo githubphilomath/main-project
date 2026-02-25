@@ -8,6 +8,7 @@ from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from models.schemas import ProjectCreate, ProjectResponse, ProjectStatus
+from services.preview_service import PreviewService
 from services.project_service import ProjectService
 from services.workflow_service import WorkflowService
 from utils.logging import get_logger
@@ -17,6 +18,7 @@ logger = get_logger(__name__)
 router = APIRouter()
 project_service = ProjectService()
 workflow_service = WorkflowService()
+preview_service = PreviewService()
 
 
 @router.post("/projects", response_model=ProjectResponse, status_code=status.HTTP_201_CREATED)
@@ -231,6 +233,55 @@ async def get_project_status(project_id: str):
         created_at=project.created_at,
         updated_at=project.updated_at,
     )
+
+
+@router.post("/projects/{project_id}/preview/start")
+async def start_preview(project_id: str):
+    """Start full application preview. Serves generated code as a runnable app."""
+    project = project_service.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+    try:
+        info = preview_service.start_preview(project_id)
+        # Return path for static (same-origin) or full URL for Python/Node (different port)
+        url = info["url"]
+        if url.startswith("http"):
+            from urllib.parse import urlparse
+            parsed = urlparse(url)
+            path = parsed.path or ""
+            # Only convert to path when it's our /preview/ route; keep full URL for Python/Node
+            if path.startswith("/preview/"):
+                url = path
+            # else: keep full URL (e.g. http://localhost:9001 for Python app)
+        return {**info, "url": url}
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+@router.post("/projects/{project_id}/preview/stop")
+async def stop_preview(project_id: str):
+    """Stop full application preview."""
+    stopped = preview_service.stop_preview(project_id)
+    return {"project_id": project_id, "stopped": stopped}
+
+
+@router.get("/projects/{project_id}/preview")
+async def get_preview_status(project_id: str):
+    """Get current preview status and URL."""
+    info = preview_service.get_preview_info(project_id)
+    if not info:
+        return {"status": "stopped", "project_id": project_id}
+    url = info["url"]
+    if url.startswith("http"):
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        path = parsed.path or ""
+        if path.startswith("/preview/"):
+            url = path
+    return {**info, "url": url}
 
 
 @router.get("/projects/{project_id}/state")

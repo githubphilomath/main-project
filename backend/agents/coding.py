@@ -80,6 +80,11 @@ class CodingAgent(BaseAgent):
           - language: Programming language
           - description: What this file does
 
+        CRITICAL FOR WEB APPLICATIONS: You MUST include index.html as the main entry point.
+        - For web apps: index.html at root, plus CSS/JS. The app must be runnable in a browser.
+        - For full-stack: index.html frontend + backend (app.py, server.js, etc.) with clear entry points.
+        - index.html should be complete and functional - users will preview the entire app from it.
+
         REQUIRED: Every code file MUST have documentation: module docstring, class and
         function docstrings, and comments for complex logic. Documentation goes with the code.
         """

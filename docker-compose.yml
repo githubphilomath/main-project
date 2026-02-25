@@ -1,5 +1,8 @@
-# Root-level docker-compose for orchestrating frontend and backend
-# For backend-only development, use: docker-compose -f backend/docker-compose.yml up
+# Root-level docker-compose for full-stack live preview
+# Start: docker-compose up -d
+# Access: http://localhost:3000 (frontend), http://localhost:8000 (API direct)
+#
+# For backend-only: docker-compose -f backend/docker-compose.yml up
 
 services:
   # Backend services (delegated to backend docker-compose)

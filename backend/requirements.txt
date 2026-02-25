@@ -21,6 +21,9 @@ chromadb==0.4.18
 # LLM Provider
 openai>=1.12.0
 
+# Preview: run generated Flask/Python apps
+flask>=3.0.0
+
 # Utilities
 python-dotenv==1.0.0
 httpx==0.25.2

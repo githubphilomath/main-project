@@ -80,6 +80,30 @@ export const projectsApi = {
   },
 
   /**
+   * Start full application preview (serves generated app as runnable).
+   */
+  startPreview: async (projectId: string): Promise<{ url: string; status: string; mode: string }> => {
+    const response = await api.post(`/projects/${projectId}/preview/start`);
+    return response.data;
+  },
+
+  /**
+   * Stop full application preview.
+   */
+  stopPreview: async (projectId: string): Promise<{ stopped: boolean }> => {
+    const response = await api.post(`/projects/${projectId}/preview/stop`);
+    return response.data;
+  },
+
+  /**
+   * Get preview status.
+   */
+  getPreviewStatus: async (projectId: string): Promise<{ status: string; url?: string }> => {
+    const response = await api.get(`/projects/${projectId}/preview`);
+    return response.data;
+  },
+
+  /**
    * Get full project workflow state including all artifacts.
    */
   getState: async (projectId: string): Promise<WorkflowState> => {

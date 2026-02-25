@@ -76,3 +76,6 @@ frontend/.vuepress/dist/
 # Local ChromaDB data
 backend/chroma_db/
 
+# Generated app previews (ephemeral)
+backend/previews/
+

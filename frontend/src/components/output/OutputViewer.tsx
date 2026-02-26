@@ -7,10 +7,9 @@ import React, { useState } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/Card';
 import { FileTree } from './FileTree';
 import { CodeViewer, type ViewMode } from './CodeViewer';
-import { LivePreview } from './LivePreview';
 import { FullAppPreview } from './FullAppPreview';
 import { useStore } from '@/store/useStore';
-import { Download, FileCode, FileText, TestTube, Code, FileType, Monitor, Globe } from 'lucide-react';
+import { Download, FileCode, FileText, TestTube, Code, FileType, Globe } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { cn } from '@/utils/cn';
 
@@ -34,7 +33,6 @@ export const OutputViewer: React.FC = () => {
   ];
 
   const selectedFileData = allFiles.find((f) => f.file_path === selectedFile);
-  const isHtml = selectedFileData?.file_path?.endsWith('.html') || selectedFileData?.file_path?.endsWith('.htm');
 
   const handleDownload = () => {
     if (!selectedFileData) return;
@@ -137,7 +135,7 @@ export const OutputViewer: React.FC = () => {
                 </div>
                 {/* View mode toggle */}
                 <div className="flex gap-1 flex-wrap">
-                  {(['code', 'doc', 'preview', 'app'] as const).map((mode) => (
+                  {(['code', 'doc', 'app'] as const).map((mode) => (
                     <button
                       key={mode}
                       onClick={() => setViewMode(mode)}
@@ -150,7 +148,6 @@ export const OutputViewer: React.FC = () => {
                     >
                       {mode === 'code' && <Code className="h-3.5 w-3.5" />}
                       {mode === 'doc' && <FileType className="h-3.5 w-3.5" />}
-                      {mode === 'preview' && <Monitor className="h-3.5 w-3.5" />}
                       {mode === 'app' && <Globe className="h-3.5 w-3.5" />}
                       {mode === 'app' ? 'Full App' : mode.charAt(0).toUpperCase() + mode.slice(1)}
                     </button>
@@ -160,22 +157,6 @@ export const OutputViewer: React.FC = () => {
               <div className="flex-1 min-h-0 overflow-hidden">
                 {viewMode === 'app' ? (
                   <FullAppPreview projectId={workflowState?.project_id || currentProject?.id} />
-                ) : viewMode === 'preview' ? (
-                  selectedFileData && isHtml ? (
-                    <LivePreview html={selectedFileData.content} />
-                  ) : (
-                    <div className="h-full flex flex-col items-center justify-center text-center p-6 gap-4">
-                      <p className="text-muted-foreground text-sm max-w-md">
-                        Single-file preview is for HTML files. For the complete working application,
-                        use <strong>Full App</strong> — it runs the entire generated app with all
-                        files, backend, and assets.
-                      </p>
-                      <Button size="sm" onClick={() => setViewMode('app')}>
-                        <Globe className="h-3.5 w-3.5 mr-1.5" />
-                        Switch to Full App Preview
-                      </Button>
-                    </div>
-                  )
                 ) : selectedFileData ? (
                   <CodeViewer file={selectedFileData} mode={viewMode} />
                 ) : (

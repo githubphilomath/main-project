@@ -19,8 +19,8 @@ class Settings(BaseSettings):
     # Azure OpenAI Configuration (chat only) - loaded via config/azure_openai.py with os.getenv fallbacks
     azure_openai_chat_deployment: str = "gpt-4"
 
-    # Gemini Configuration (embeddings only)
-    gemini_api_key: str
+    # Gemini Configuration (embeddings only) - optional when using Azure-only; RAG needs it
+    gemini_api_key: str = ""
     embedding_model: str = "models/gemini-embedding-001"
 
     # Database Configuration

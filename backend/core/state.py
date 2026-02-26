@@ -112,3 +112,6 @@ class AgentState(TypedDict, total=False):
     updated_at: str
     completed: bool
 
+    # User modification request (when re-running coding with feedback)
+    modification_request: Optional[str]
+

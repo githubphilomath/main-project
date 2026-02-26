@@ -14,6 +14,12 @@ class ProjectCreate(BaseModel):
     requirements: str = Field(..., description="User requirements for the project")
 
 
+class ProjectModify(BaseModel):
+    """Schema for modification request (edit existing code in place)."""
+
+    message: str = Field(..., description="User modification request, e.g. 'Add dark mode'")
+
+
 class ProjectResponse(BaseModel):
     """Schema for project response."""
 

@@ -20,6 +20,19 @@ const api = axios.create({
   },
 });
 
+// Log 5xx errors so the real backend message is visible
+api.interceptors.response.use(
+  (r) => r,
+  (err) => {
+    if (err.response?.status >= 500) {
+      const data = err.response?.data;
+      const detail = typeof data?.detail === 'string' ? data.detail : JSON.stringify(data);
+      console.error(`API ${err.config?.method?.toUpperCase()} ${err.config?.url} → ${err.response?.status}:`, detail || err.message);
+    }
+    return Promise.reject(err);
+  }
+);
+
 /**
  * Projects API
  */
@@ -58,6 +71,18 @@ export const projectsApi = {
     message: string;
   }> => {
     const response = await api.post(`/projects/${projectId}/execute`);
+    return response.data;
+  },
+
+  /**
+   * Apply modification request to existing project code (edit in place).
+   */
+  modify: async (projectId: string, message: string): Promise<{
+    project_id: string;
+    status: string;
+    message: string;
+  }> => {
+    const response = await api.post(`/projects/${projectId}/modify`, { message });
     return response.data;
   },
 

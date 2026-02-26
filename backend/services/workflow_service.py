@@ -43,6 +43,77 @@ class WorkflowService:
             if not self._event_queues[project_id]:
                 del self._event_queues[project_id]
 
+    async def execute_modification(
+        self,
+        project_id: str,
+        message: str,
+    ) -> AgentState:
+        """Run the coding agent with user feedback to modify existing code in place.
+
+        Loads current project state, adds modification_request, invokes coding agent,
+        updates DB, and broadcasts SSE events.
+        """
+        self.logger.info("Executing modification", project_id=project_id)
+
+        project = self.project_service.get_project(project_id)
+        if not project:
+            raise ValueError(f"Project {project_id} not found")
+
+        state_data = project.state_data or {}
+        if not state_data.get("code_artifacts") and not state_data.get("architecture_design"):
+            raise ValueError(
+                "Project has no code or architecture yet. Run the workflow first, then request modifications."
+            )
+
+        state: AgentState = dict(state_data)
+        state["modification_request"] = message
+        state["current_phase"] = "coding"
+        state["current_agent"] = "coding"
+
+        def on_graph_event(event: Dict[str, Any]):
+            event["project_id"] = project_id
+            self._broadcast_event(project_id, event)
+
+        self.workflow.add_event_listener(on_graph_event)
+
+        try:
+            self._broadcast_event(project_id, {
+                "event": "agent_start",
+                "agent": "coding",
+                "phase": "coding",
+                "message": "Applying your modifications...",
+                "project_id": project_id,
+            })
+            result = self.workflow.coding.execute(state)
+            self._broadcast_event(project_id, {
+                "event": "agent_complete",
+                "agent": "coding",
+                "phase": "coding",
+                "message": result.get("agent_decisions", [{}])[-1].get("decision", "Modifications applied.")
+                if result.get("agent_decisions") else "Modifications applied.",
+                "project_id": project_id,
+            })
+            # Remove modification_request from persisted state; mark as completed
+            result.pop("modification_request", None)
+            result["current_phase"] = "completed"
+            self.project_service.update_project_state(project_id, result)
+            self._broadcast_event(project_id, {
+                "event": "workflow_complete",
+                "phase": "coding",
+                "project_id": project_id,
+            })
+            return result
+        except Exception as e:
+            self.logger.error("Modification failed", error=str(e), project_id=project_id)
+            self._broadcast_event(project_id, {
+                "event": "workflow_error",
+                "message": str(e),
+                "project_id": project_id,
+            })
+            raise
+        finally:
+            self.workflow.remove_event_listener(on_graph_event)
+
     def _broadcast_event(self, project_id: str, event: Dict[str, Any]):
         """Broadcast an SSE event to all subscribers for a project."""
         queues = self._event_queues.get(project_id, [])

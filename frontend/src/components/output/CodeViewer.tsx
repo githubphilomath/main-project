@@ -6,7 +6,7 @@ import React from 'react';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
-export type ViewMode = 'code' | 'doc' | 'preview' | 'app';
+export type ViewMode = 'code' | 'doc' | 'app';
 
 interface CodeViewerProps {
   file: {

@@ -7,7 +7,7 @@ from typing import List
 from fastapi import APIRouter, BackgroundTasks, HTTPException, status
 from fastapi.responses import StreamingResponse
 
-from models.schemas import ProjectCreate, ProjectResponse, ProjectStatus
+from models.schemas import ProjectCreate, ProjectModify, ProjectResponse, ProjectStatus
 from services.preview_service import PreviewService
 from services.project_service import ProjectService
 from services.workflow_service import WorkflowService
@@ -49,7 +49,8 @@ async def create_project(project: ProjectCreate):
             updated_at=db_project.updated_at,
         )
     except Exception as e:
-        logger.error("Failed to create project", error=str(e))
+        import traceback
+        logger.error("Failed to create project", error=str(e), traceback=traceback.format_exc())
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=str(e),
@@ -88,6 +89,53 @@ async def _run_workflow_background(project_id: str):
             error=str(e),
             project_id=project_id,
         )
+
+
+@router.post("/projects/{project_id}/modify", status_code=status.HTTP_202_ACCEPTED)
+async def modify_project(project_id: str, background_tasks: BackgroundTasks, body: ProjectModify):
+    """Apply user modification request to existing code. Runs coding agent in place.
+
+    Returns 202 Accepted; connect to /events for real-time updates.
+    """
+    message = (body.message or "").strip()
+    if not message:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Missing or empty 'message' in request body",
+        )
+
+    project = project_service.get_project(project_id)
+    if not project:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Project {project_id} not found",
+        )
+
+    async def _run_modification():
+        try:
+            await workflow_service.execute_modification(project_id, message)
+        except ValueError as e:
+            logger.warning("Modification rejected", error=str(e), project_id=project_id)
+            workflow_service._broadcast_event(project_id, {
+                "event": "workflow_error",
+                "message": str(e),
+                "project_id": project_id,
+            })
+        except Exception as e:
+            logger.error("Modification failed", error=str(e), project_id=project_id)
+            workflow_service._broadcast_event(project_id, {
+                "event": "workflow_error",
+                "message": str(e),
+                "project_id": project_id,
+            })
+
+    background_tasks.add_task(_run_modification)
+
+    return {
+        "project_id": project_id,
+        "status": "accepted",
+        "message": "Modification started. Connect to /events for updates.",
+    }
 
 
 @router.post("/projects/{project_id}/execute", status_code=status.HTTP_202_ACCEPTED)

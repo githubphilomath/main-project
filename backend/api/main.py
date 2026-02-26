@@ -3,16 +3,17 @@
 from contextlib import asynccontextmanager
 from pathlib import Path
 
-from fastapi import FastAPI, HTTPException
+import re
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 
 from api.routes import projects
 from config.settings import get_settings
-from utils.logging import setup_logging
+from utils.logging import get_logger, setup_logging
 
-# Setup logging
 setup_logging()
+logger = get_logger(__name__)
 
 
 @asynccontextmanager
@@ -34,6 +35,17 @@ def create_app() -> FastAPI:
         lifespan=lifespan,
     )
 
+    @app.exception_handler(Exception)
+    async def global_exception_handler(request: Request, exc: Exception):
+        """Log unexpected errors and return 500. Skip HTTPException (handled by FastAPI)."""
+        if isinstance(exc, HTTPException):
+            raise exc
+        logger.error("Unhandled exception", error=str(exc), path=request.url.path, method=request.method)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": str(exc) if str(exc) else "Internal server error"},
+        )
+
     # CORS middleware
     app.add_middleware(
         CORSMiddleware,
@@ -49,7 +61,17 @@ def create_app() -> FastAPI:
     # Serve generated app preview - must be after routers
     PREVIEW_BASE = Path(__file__).resolve().parent.parent / "previews"
 
-    def _serve_preview_file(project_id: str, path: str) -> FileResponse:
+    def _fix_html_for_preview(content: str, project_id: str) -> str:
+        """Rewrite root-relative asset paths and inject base tag so preview loads under /preview/{id}/."""
+        content = re.sub(r'(src|href)="/static', r'\1="./static', content)
+        content = re.sub(r'(src|href)="/assets', r'\1="./assets', content)
+        content = re.sub(r'(src|href)="/(?![/#])', r'\1="./', content)
+        base_tag = f'<base href="/preview/{project_id}/">'
+        if "<base " not in content.lower():
+            content = re.sub(r"<head[^>]*>", lambda m: m.group(0) + "\n    " + base_tag, content, count=1, flags=re.I)
+        return content
+
+    def _serve_preview_file(project_id: str, path: str):
         safe_id = "".join(c for c in project_id if c.isalnum() or c in "-_")
         if safe_id != project_id:
             raise HTTPException(400, "Invalid project_id")
@@ -64,7 +86,12 @@ def create_app() -> FastAPI:
             file_path = (file_path / "index.html").resolve()
         if not file_path.exists():
             raise HTTPException(404, f"File not found: {path or 'index.html'}")
-        return FileResponse(file_path, media_type="text/html" if str(file_path).endswith(".html") else None)
+        is_html = str(file_path).endswith(".html")
+        if is_html:
+            content = file_path.read_text(encoding="utf-8", errors="replace")
+            content = _fix_html_for_preview(content, project_id)
+            return HTMLResponse(content, media_type="text/html; charset=utf-8")
+        return FileResponse(file_path)
 
     @app.get("/preview/{project_id}")
     async def serve_preview_root(project_id: str):

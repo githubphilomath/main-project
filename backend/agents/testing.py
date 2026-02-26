@@ -2,13 +2,34 @@
 
 import json
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, List
 
 from agents.base import BaseAgent
 from core.state import AgentState, TestArtifact
 from utils.logging import get_logger
 
 logger = get_logger(__name__)
+
+
+def _merge_test_artifacts_by_path(
+    existing: List[Dict[str, Any]], new: List[Dict[str, Any]]
+) -> List[Dict[str, Any]]:
+    """Merge new test artifacts into existing by file_path. Updates in place, no duplicates."""
+    def _path(a: Dict[str, Any]) -> str:
+        return (a.get("file_path") or "").replace("\\", "/")
+
+    by_path: Dict[str, Dict[str, Any]] = {}
+    for a in existing:
+        d = a if isinstance(a, dict) else (a.dict() if hasattr(a, "dict") else a)
+        by_path[_path(d)] = dict(d)
+    for a in new:
+        p = _path(a)
+        if p in by_path:
+            by_path[p].update(a)
+            by_path[p]["timestamp"] = a.get("timestamp", datetime.utcnow().isoformat())
+        else:
+            by_path[p] = dict(a)
+    return list(by_path.values())
 
 
 class TestingAgent(BaseAgent):
@@ -72,9 +93,12 @@ class TestingAgent(BaseAgent):
         docstrings, and docstrings for each test describing what it validates.
         Test content must include these docstrings.
 
+        CRITICAL: Edit tests IN PLACE. Use the SAME file_path as existing test files when
+        modifying—your content will replace it. Do NOT create duplicates (e.g. test_app_2.py).
+
         Provide a JSON response with:
         - test_files: List of test files, each with:
-          - file_path: Test file path
+          - file_path: Test file path (must match existing paths exactly when modifying)
           - content: Test file content (with docstrings and comments)
           - test_type: unit/integration/e2e
           - coverage_estimate: Estimated coverage percentage
@@ -130,23 +154,19 @@ class TestingAgent(BaseAgent):
                 },
             )
 
-        avg_coverage = sum(t.get("coverage", 0) or 0 for t in test_artifacts) / max(len(test_artifacts), 1)
+        existing_tests = state.get("test_artifacts", [])
+        merged = _merge_test_artifacts_by_path(existing_tests, test_artifacts)
+        avg_coverage = sum(t.get("coverage", 0) or 0 for t in merged) / max(len(merged), 1)
         decision = self.create_decision(
-            decision=f"Generated {len(test_artifacts)} test files",
-            rationale=f"Created tests covering {avg_coverage:.1f}% estimated coverage",
+            decision=f"Updated {len(test_artifacts)} test files in place ({len(merged)} total, no duplicates)",
+            rationale=f"Edits applied directly to existing paths. Estimated coverage: {avg_coverage:.1f}%",
             confidence=0.75,
         )
 
-        existing_tests = state.get("test_artifacts", [])
-        # Convert existing tests to dicts if they're Pydantic models
-        existing_dicts = [
-            t if isinstance(t, dict) else t.dict() if hasattr(t, "dict") else t
-            for t in existing_tests
-        ]
         return self.update_state(
             state,
             {
-                "test_artifacts": existing_dicts + test_artifacts,
+                "test_artifacts": merged,
                 "agent_decisions": state.get("agent_decisions", []) + [decision],
             },
         )

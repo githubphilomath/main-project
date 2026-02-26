@@ -93,6 +93,8 @@ class PreviewService:
                 content = re.sub(r'(src|href)="/js/', r'\1="./js/', content)
                 content = re.sub(r'(src|href)="/css/', r'\1="./css/', content)
                 content = re.sub(r'(src|href)="/img/', r'\1="./img/', content)
+                # Catch remaining root-relative paths (e.g. Vite's /assets/xxx.js) - not // or #
+                content = re.sub(r'(src|href)="/(?![/#])', r'\1="./', content)
                 html_path.write_text(content, encoding="utf-8")
             except Exception as e:
                 logger.warning("Could not fix HTML paths", path=str(html_path), error=str(e))

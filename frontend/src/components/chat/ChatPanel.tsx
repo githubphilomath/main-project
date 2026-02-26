@@ -20,7 +20,8 @@ export const ChatPanel: React.FC = () => {
   const [thinkingMessage, setThinkingMessage] = useState<string | null>(null);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
-  const { messages, addMessage, setCurrentProject, setLoading, setStreaming } = useStore();
+  const { messages, addMessage, currentProject, setCurrentProject, setLoading, setStreaming, setWorkflowState } = useStore();
+  const isModifyMode = Boolean(currentProject);
 
   const scrollToBottom = () => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -98,14 +99,26 @@ export const ChatPanel: React.FC = () => {
     });
 
     // workflow_complete
-    es.addEventListener('workflow_complete', () => {
+    es.addEventListener('workflow_complete', async (e) => {
       setThinkingMessage(null);
       setStreaming(false);
       setLoading(false);
+      let isModifyCompletion = false;
+      try {
+        const data = JSON.parse((e as MessageEvent).data);
+        isModifyCompletion = data.phase === 'coding';
+        const pid = data.project_id || projectId;
+        if (pid) {
+          const state = await projectsApi.getState(pid);
+          if (state) setWorkflowState(state);
+        }
+      } catch { /* ignore */ }
       const msg: Message = {
         id: `done-${Date.now()}`,
         role: 'assistant',
-        content: 'Workflow completed successfully! All agents have finished their work.',
+        content: isModifyCompletion
+          ? 'Modifications applied successfully! Your changes have been updated in place.'
+          : 'Workflow completed successfully! All agents have finished their work.',
         timestamp: new Date(),
         projectId,
       };
@@ -146,7 +159,7 @@ export const ChatPanel: React.FC = () => {
         eventSourceRef.current = null;
       }
     };
-  }, [addMessage, setLoading, setStreaming]);
+  }, [addMessage, setLoading, setStreaming, setWorkflowState]);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -157,48 +170,56 @@ export const ChatPanel: React.FC = () => {
       role: 'user',
       content: input.trim(),
       timestamp: new Date(),
+      ...(currentProject && { projectId: currentProject.id }),
     };
 
     addMessage(userMessage);
+    const messageText = input.trim();
     setInput('');
     setIsSubmitting(true);
     setLoading(true);
 
     try {
-      // Parse project creation from message
-      const lines = input.trim().split('\n');
-      const name = lines[0] || 'New Project';
-      const description = lines.slice(1).join('\n') || input.trim();
-      
-      const project = await projectsApi.create({
-        name,
-        description,
-        requirements: input.trim(),
-      });
+      if (isModifyMode && currentProject) {
+        // Modification request for existing project
+        connectToEvents(currentProject.id);
+        await projectsApi.modify(currentProject.id, messageText);
+      } else {
+        // Create new project
+        const lines = messageText.split('\n');
+        const name = lines[0] || 'New Project';
+        const description = lines.slice(1).join('\n') || messageText;
 
-      setCurrentProject(project);
+        const project = await projectsApi.create({
+          name,
+          description,
+          requirements: messageText,
+        });
 
-      const assistantMessage: Message = {
-        id: (Date.now() + 1).toString(),
-        role: 'assistant',
-        content: `Project "${project.name}" created successfully! Project ID: ${project.id}\n\nStarting workflow execution...`,
-        timestamp: new Date(),
-        projectId: project.id,
-      };
+        setCurrentProject(project);
 
-      addMessage(assistantMessage);
+        const assistantMessage: Message = {
+          id: (Date.now() + 1).toString(),
+          role: 'assistant',
+          content: `Project "${project.name}" created successfully! Project ID: ${project.id}\n\nStarting workflow execution...`,
+          timestamp: new Date(),
+          projectId: project.id,
+        };
 
-      // Connect to SSE events BEFORE firing execute so we don't miss events
-      connectToEvents(project.id);
+        addMessage(assistantMessage);
 
-      // Execute workflow (fire-and-forget, returns immediately with 202)
-      await projectsApi.execute(project.id);
-
-    } catch (error) {
+        connectToEvents(project.id);
+        await projectsApi.execute(project.id);
+      }
+    } catch (error: unknown) {
+      const err = error as { response?: { data?: { detail?: string | unknown[] } }; message?: string };
+      const d = err.response?.data?.detail;
+      const detail = typeof d === 'string' ? d : Array.isArray(d) ? (d[0]?.msg ?? JSON.stringify(d)) : undefined;
+      const msg = detail || (err.message ?? 'Failed to create project');
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
         role: 'system',
-        content: `Error: ${error instanceof Error ? error.message : 'Failed to create project'}`,
+        content: `Error: ${msg}`,
         timestamp: new Date(),
       };
       addMessage(errorMessage);
@@ -216,9 +237,13 @@ export const ChatPanel: React.FC = () => {
           {messages.length === 0 && (
             <div className="flex items-center justify-center h-full text-muted-foreground">
               <div className="text-center">
-                <h3 className="text-lg font-semibold mb-2">Start a New Project</h3>
+                <h3 className="text-lg font-semibold mb-2">
+                  {isModifyMode ? 'Request Modifications' : 'Start a New Project'}
+                </h3>
                 <p className="text-sm">
-                  Describe your software idea and our AI agents will build it for you.
+                  {isModifyMode
+                    ? 'Ask for changes to your existing app. Edits are applied in place (like Cursor).'
+                    : 'Describe your software idea and our AI agents will build it for you.'}
                 </p>
               </div>
             </div>
@@ -238,19 +263,21 @@ export const ChatPanel: React.FC = () => {
           {isSubmitting && !thinkingMessage && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
-              <span className="text-sm">Creating project...</span>
+              <span className="text-sm">{isModifyMode ? 'Applying modifications...' : 'Creating project...'}</span>
             </div>
           )}
           <div ref={messagesEndRef} />
         </div>
 
         {/* Input Area */}
-        <form onSubmit={handleSubmit} className="border-t p-4">
+        <form id="chat-form" onSubmit={handleSubmit} className="border-t p-4">
           <div className="flex gap-2">
             <textarea
+              id="chat-message-input"
+              name="message"
               value={input}
               onChange={(e) => setInput(e.target.value)}
-              placeholder="Describe your software project idea..."
+              placeholder={isModifyMode ? "Request a modification (e.g. Add dark mode, change button color)..." : "Describe your software project idea..."}
               className="flex-1 min-h-[80px] max-h-[200px] rounded-lg border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 resize-none"
               disabled={isSubmitting}
               onKeyDown={(e) => {

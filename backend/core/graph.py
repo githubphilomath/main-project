@@ -1,5 +1,6 @@
 """LangGraph workflow orchestration for multi-agent system."""
 
+import time
 from typing import Any, Callable, Dict, List, Literal
 
 from langgraph.graph import END, StateGraph
@@ -32,13 +33,13 @@ AGENT_DISPLAY = {
 }
 
 AGENT_THINKING_MSG = {
-    "requirement_analysis": "Analyzing requirements...",
-    "architecture": "Designing system architecture...",
-    "coding": "Generating code...",
-    "debugging": "Debugging code...",
-    "testing": "Creating tests...",
-    "documentation": "Writing documentation...",
-    "deployment": "Configuring deployment...",
+    "requirement_analysis": "Analyzing your requirements — extracting user stories, acceptance criteria, and technical constraints...",
+    "architecture": "Designing system architecture — choosing patterns, tech stack, and component structure...",
+    "coding": "Writing production code — implementing all components with proper error handling and styling...",
+    "debugging": "Debugging the codebase — scanning for syntax errors, logic issues, and security vulnerabilities...",
+    "testing": "Generating test suite — creating unit tests, integration tests, and edge case coverage...",
+    "documentation": "Writing documentation — README with setup instructions, architecture docs, and API reference...",
+    "deployment": "Configuring deployment — Dockerfile, run commands, and environment setup...",
 }
 
 
@@ -154,7 +155,7 @@ class AgentWorkflow:
         return workflow
 
     def _build_verbose_summary(self, agent_name: str, result: AgentState) -> str:
-        """Build a verbose summary of what the agent produced."""
+        """Build a verbose, untruncated summary of what the agent produced."""
         display = AGENT_DISPLAY.get(agent_name, agent_name)
         parts = [f"**{display}** completed."]
 
@@ -162,7 +163,7 @@ class AgentWorkflow:
             next_phase = result.get("current_phase", "")
             next_agent = result.get("next_agent", "")
             if next_phase == "completed":
-                parts.append("All phases finished -- workflow complete.")
+                parts.append("All phases finished — workflow complete.")
             elif next_agent:
                 parts.append(f"Next up: **{AGENT_DISPLAY.get(next_agent, next_agent)}**")
             return " ".join(parts)
@@ -178,33 +179,49 @@ class AgentWorkflow:
                 f"and {len(us)} user stories."
             )
             if fr:
-                parts.append(f"Key: {fr[0][:100]}{'...' if len(fr[0]) > 100 else ''}")
+                top = fr[:3] if len(fr) > 3 else fr
+                for i, req in enumerate(top, 1):
+                    req_text = req if isinstance(req, str) else (req.get("description") or req.get("name") or str(req))
+                    parts.append(f"\n{i}. {req_text}")
 
         elif agent_name == "architecture":
             arch = result.get("architecture_design") or {}
             pattern = arch.get("architecture_pattern", "N/A")
             stack = arch.get("technology_stack", [])
             comps = arch.get("system_components", [])
-            parts.append(
-                f"Pattern: **{pattern}**. "
-                f"Stack: {', '.join(stack[:5])}{'...' if len(stack) > 5 else ''}. "
-                f"{len(comps)} components designed."
-            )
+            file_structure = arch.get("file_structure", [])
+            parts.append(f"Pattern: **{pattern}**.")
+            parts.append(f"Stack: {', '.join(stack)}.")
+            parts.append(f"{len(comps)} components designed.")
+            if file_structure:
+                parts.append(f"\nFile structure ({len(file_structure)} files):")
+                for f in file_structure:
+                    parts.append(f"  • {f}")
 
         elif agent_name == "coding":
             artifacts = result.get("code_artifacts", [])
-            parts.append(f"Generated **{len(artifacts)} code files**.")
+            parts.append(f"Generated **{len(artifacts)} code files**:")
             if artifacts:
-                file_names = [a.get("file_path", "?") for a in artifacts[:5]]
-                parts.append("Files: " + ", ".join(file_names))
-                if len(artifacts) > 5:
-                    parts.append(f"...and {len(artifacts) - 5} more.")
+                for a in artifacts:
+                    fp = a.get("file_path", "?")
+                    lang = a.get("language", "")
+                    parts.append(f"  • {fp}" + (f" ({lang})" if lang else ""))
 
         elif agent_name == "debugging":
-            decisions = result.get("agent_decisions", [])
-            debug_decisions = [d for d in decisions if d.get("agent_name") == "debugging"]
-            if debug_decisions:
-                parts.append(debug_decisions[-1].get("decision", ""))
+            issues = result.get("debug_issues", [])
+            if issues:
+                fixed_paths = set(i.get("file_path", "?") for i in issues)
+                parts.append(f"Found and fixed **{len(issues)} issues** in **{len(fixed_paths)} files**:")
+                for iss in issues:
+                    sev = iss.get("severity", "?").upper()
+                    fp = iss.get("file_path", "?")
+                    desc = iss.get("description", "")
+                    fix = iss.get("fix", "")
+                    parts.append(f"  • **[{sev}]** `{fp}`: {desc}")
+                    if fix:
+                        parts.append(f"    ↳ Fix: {fix}")
+            else:
+                parts.append("No issues found during debugging.")
 
         elif agent_name == "testing":
             test_artifacts = result.get("test_artifacts", [])
@@ -212,28 +229,80 @@ class AgentWorkflow:
             if test_artifacts:
                 types = set(a.get("test_type", "unit") for a in test_artifacts)
                 parts.append(f"Types: {', '.join(types)}.")
+                for t in test_artifacts:
+                    parts.append(f"  • {t.get('file_path', '?')}")
 
         elif agent_name == "documentation":
             docs = result.get("documentation_artifacts", [])
-            parts.append(f"Wrote **{len(docs)} documentation files**.")
+            parts.append(f"Wrote **{len(docs)} documentation files**:")
             if docs:
-                doc_types = [d.get("doc_type", "?") for d in docs]
-                parts.append("Docs: " + ", ".join(doc_types))
+                for d in docs:
+                    dt = d.get("doc_type", "?")
+                    desc = d.get("description", "")
+                    parts.append(f"  • {dt}" + (f" — {desc}" if desc else ""))
 
         elif agent_name == "deployment":
             deploy = result.get("deployment_config") or {}
             dtype = deploy.get("deployment_type", "N/A")
             steps = deploy.get("deployment_steps", [])
-            parts.append(
-                f"Type: **{dtype}**. {len(steps)} deployment steps configured."
-            )
+            parts.append(f"Type: **{dtype}**. {len(steps)} deployment steps:")
+            for s in steps:
+                step_text = s if isinstance(s, str) else (s.get("description") or s.get("command") or str(s))
+                parts.append(f"  • {step_text}")
 
-        return " ".join(parts)
+        return "\n".join(parts)
+
+    def _build_details(self, agent_name: str, result: AgentState) -> dict:
+        """Build structured details dict for the agent_complete event."""
+        details: Dict[str, Any] = {}
+        if agent_name == "requirement_analysis":
+            ra = result.get("requirements_analysis") or {}
+            details["functional_requirements"] = len(ra.get("functional_requirements", []))
+            details["non_functional_requirements"] = len(ra.get("non_functional_requirements", []))
+            details["user_stories"] = len(ra.get("user_stories", []))
+        elif agent_name == "architecture":
+            arch = result.get("architecture_design") or {}
+            details["pattern"] = arch.get("architecture_pattern", "N/A")
+            details["tech_stack"] = arch.get("technology_stack", [])[:8]
+            details["components"] = len(arch.get("system_components", []))
+            details["files_planned"] = len(arch.get("file_structure", []))
+        elif agent_name == "coding":
+            arts = result.get("code_artifacts", [])
+            details["files_generated"] = len(arts)
+            details["file_paths"] = [a.get("file_path", "?") for a in arts[:10]]
+        elif agent_name == "debugging":
+            issues = result.get("debug_issues", [])
+            details["issues_count"] = len(issues)
+            details["files_fixed"] = list(set(i.get("file_path", "?") for i in issues))
+            details["issues"] = [
+                {
+                    "file": i.get("file_path", "?"),
+                    "severity": i.get("severity", "?"),
+                    "description": i.get("description", ""),
+                    "fix": i.get("fix", ""),
+                }
+                for i in issues
+            ]
+        elif agent_name == "testing":
+            tests = result.get("test_artifacts", [])
+            details["test_files"] = len(tests)
+            details["test_types"] = list(set(a.get("test_type", "unit") for a in tests))
+        elif agent_name == "documentation":
+            docs = result.get("documentation_artifacts", [])
+            details["doc_count"] = len(docs)
+            details["doc_types"] = [d.get("doc_type", "?") for d in docs]
+        elif agent_name == "deployment":
+            dep = result.get("deployment_config") or {}
+            details["deployment_type"] = dep.get("deployment_type", "N/A")
+            details["steps"] = len(dep.get("deployment_steps", []))
+            details["run_command"] = dep.get("run_command", "")
+        return details
 
     def _run_agent_node(self, state: AgentState, agent_name: str, agent) -> AgentState:
-        """Generic agent node runner with event emission."""
+        """Generic agent node runner with rich event emission."""
         display = AGENT_DISPLAY.get(agent_name, agent_name)
         thinking = AGENT_THINKING_MSG.get(agent_name, f"Running {display}...")
+        start_time = time.time()
         try:
             self.logger.info(
                 f"{display} node",
@@ -245,23 +314,31 @@ class AgentWorkflow:
                 "agent": agent_name,
                 "phase": state.get("current_phase", agent_name),
                 "message": thinking,
+                "thinking": thinking,
             })
             result = agent.execute(state)
+            duration_ms = int((time.time() - start_time) * 1000)
             verbose = self._build_verbose_summary(agent_name, result)
+            details = self._build_details(agent_name, result)
             self._emit_event({
                 "event": "agent_complete",
                 "agent": agent_name,
                 "phase": result.get("current_phase", agent_name),
                 "message": verbose,
+                "summary": verbose,
+                "details": details,
+                "duration_ms": duration_ms,
             })
             return result
         except Exception as e:
+            duration_ms = int((time.time() - start_time) * 1000)
             self.logger.error(f"{display} error", error=str(e))
             self._emit_event({
                 "event": "agent_error",
                 "agent": agent_name,
                 "phase": state.get("current_phase", agent_name),
                 "message": f"**{display}** encountered an error: {str(e)[:200]}",
+                "duration_ms": duration_ms,
             })
             return self._handle_error(state, agent_name, str(e))
 

@@ -68,42 +68,56 @@ class TestingAgent(BaseAgent):
             query="test generation best practices and testing patterns"
         )
 
-        # Build prompt
-        system_prompt = """You are a senior test engineer. Generate comprehensive
-        test suites for the code. Every test file MUST include documentation:
-        module docstring, test class docstrings, and docstrings for each test
-        method describing what is being tested. Documentation goes with the code."""
+        system_prompt = (
+            "You are a senior test engineer who writes thorough, runnable test suites. "
+            "Every test has a clear docstring explaining what it validates. Tests cover "
+            "happy paths, edge cases, and error conditions."
+        )
+
+        code_previews = []
+        for a in code_artifacts[:15]:
+            fp = a.get('file_path', '') if isinstance(a, dict) else a.file_path
+            content = (a.get('content', '') if isinstance(a, dict) else a.content)[:3000]
+            code_previews.append({"path": fp, "content": content})
+
+        func_reqs = requirements.get("functional_requirements", []) if isinstance(requirements, dict) else []
+
         prompt = f"""
-        Generate tests for the following code:
+Generate comprehensive tests for this project.
 
-        Requirements: {json.dumps(requirements, indent=2)}
+REQUIREMENTS:
+{json.dumps(requirements, indent=2)}
 
-        Code Files:
-        {json.dumps([{'path': a.get('file_path', '') if isinstance(a, dict) else a.file_path, 'content': (a.get('content', '') if isinstance(a, dict) else a.content)[:500]} for a in code_artifacts], indent=2)}
+CODE FILES:
+{json.dumps(code_previews, indent=2)}
 
-        Best practices:
-        {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
+INSTRUCTIONS:
+1. Create a test file for each code file (e.g., app.py -> test_app.py).
+2. Map each functional requirement to at least one test. Requirements:
+   {json.dumps(func_reqs[:10], indent=2) if func_reqs else "See requirements above."}
+3. Use the Arrange-Act-Assert pattern for every test.
+4. Include:
+   - UNIT TESTS: Test individual functions/methods in isolation
+   - INTEGRATION TESTS: Test components working together
+   - EDGE CASE TESTS: Empty input, boundary values, error conditions
+5. Each test must have a docstring: "Test that [what] when [condition]."
+6. Use the appropriate test framework for the language (pytest for Python,
+   Jest/Vitest for JS/TS, unittest for simple Python).
+7. When modifying existing tests, use the EXACT same file_path.
 
-        Generate comprehensive test files including:
-        - Unit tests
-        - Integration tests
-        - End-to-end tests (if applicable)
-
-        REQUIRED: Each test file MUST have documentation: module docstring, class
-        docstrings, and docstrings for each test describing what it validates.
-        Test content must include these docstrings.
-
-        CRITICAL: Edit tests IN PLACE. Use the SAME file_path as existing test files when
-        modifying—your content will replace it. Do NOT create duplicates (e.g. test_app_2.py).
-
-        Provide a JSON response with:
-        - test_files: List of test files, each with:
-          - file_path: Test file path (must match existing paths exactly when modifying)
-          - content: Test file content (with docstrings and comments)
-          - test_type: unit/integration/e2e
-          - coverage_estimate: Estimated coverage percentage
-          - description: What is being tested
-        """
+Respond with ONLY a JSON object:
+{{
+  "test_files": [
+    {{
+      "file_path": "test file path",
+      "content": "complete test file content",
+      "test_type": "unit|integration|e2e",
+      "coverage_estimate": 85.0,
+      "description": "what is being tested"
+    }}
+  ]
+}}
+"""
 
         response_format = {
             "test_files": [

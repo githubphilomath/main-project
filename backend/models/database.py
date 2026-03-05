@@ -22,6 +22,7 @@ class Project(Base):
     status = Column(String, default="pending")
     current_phase = Column(String, default="initialization")
     state_data = Column(JSON, default=dict)
+    chat_messages = Column(JSON, default=list)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

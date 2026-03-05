@@ -133,6 +133,38 @@ class ProjectService:
         finally:
             db.close()
 
+    def list_projects(self):
+        """List all projects sorted by updated_at descending."""
+        db = self.SessionLocal()
+        try:
+            return db.query(Project).order_by(Project.updated_at.desc()).all()
+        finally:
+            db.close()
+
+    def save_chat_messages(self, project_id: str, messages: list) -> None:
+        """Persist chat messages JSON for a project."""
+        db = self.SessionLocal()
+        try:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            if project:
+                project.chat_messages = messages
+                db.commit()
+        except Exception as e:
+            db.rollback()
+            self.logger.error("Failed to save chat messages", error=str(e))
+            raise
+        finally:
+            db.close()
+
+    def get_chat_messages(self, project_id: str) -> list:
+        """Retrieve persisted chat messages for a project."""
+        db = self.SessionLocal()
+        try:
+            project = db.query(Project).filter(Project.id == project_id).first()
+            return (project.chat_messages or []) if project else []
+        finally:
+            db.close()
+
     def create_initial_state(
         self,
         project_id: str,

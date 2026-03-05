@@ -5,6 +5,9 @@ import re
 import shutil
 import socket
 import subprocess
+import threading
+import time
+import urllib.request
 from pathlib import Path
 from typing import Dict, List, Optional, Any
 
@@ -38,6 +41,7 @@ class PreviewService:
         self._active_previews: Dict[str, subprocess.Popen] = {}
         self._preview_dirs: Dict[str, Path] = {}
         self._preview_ports: Dict[str, int] = {}
+        self._backend_status: Dict[str, Dict[str, Any]] = {}
         PREVIEW_BASE.mkdir(parents=True, exist_ok=True)
 
     def _get_project_state(self, project_id: str) -> Optional[Dict[str, Any]]:
@@ -108,13 +112,221 @@ class PreviewService:
         code_artifacts = state.get("code_artifacts", [])
         file_list = [a.get("file_path", "") for a in code_artifacts if a.get("file_path")]
 
-        # Generate index.html that loads available assets
         js_files = [f for f in file_list if f.endswith(".js")]
         css_files = [f for f in file_list if f.endswith(".css")]
         py_files = [f for f in file_list if f.endswith(".py")]
 
         project_name = state.get("project_name", "Generated Application")
+        architecture = state.get("architecture_design", {})
+        api_design = architecture.get("api_design", [])
+        requirements = state.get("requirements_analysis", {})
+        docs = state.get("documentation_artifacts", [])
 
+        is_backend_only = (py_files or js_files) and not css_files and not any(
+            "index.html" in f for f in file_list
+        )
+
+        if is_backend_only:
+            html = self._generate_api_explorer_html(
+                project_name, file_list, api_design, requirements, docs
+            )
+        else:
+            html = self._generate_file_listing_html(
+                project_name, file_list, css_files, js_files, py_files
+            )
+
+        (preview_dir / "index.html").write_text(html, encoding="utf-8")
+
+    def _generate_api_explorer_html(
+        self,
+        project_name: str,
+        file_list: List[str],
+        api_design: Any,
+        requirements: Any,
+        docs: Any,
+    ) -> str:
+        """Generate an interactive API explorer / project dashboard for backend-only apps."""
+        import json as _json
+
+        readme_content = ""
+        for doc in (docs or []):
+            if isinstance(doc, dict) and doc.get("doc_type") in ("README", "readme"):
+                readme_content = doc.get("content", "")[:3000]
+                break
+
+        endpoints_json = _json.dumps(api_design if api_design else [], default=str)
+        file_list_json = _json.dumps(file_list[:30], default=str)
+        readme_escaped = readme_content.replace("\\", "\\\\").replace("`", "\\`").replace("$", "\\$")
+
+        func_requirements = []
+        if isinstance(requirements, dict):
+            func_requirements = requirements.get("functional_requirements", [])
+        reqs_json = _json.dumps(func_requirements[:20] if func_requirements else [], default=str)
+
+        return f"""<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{project_name}</title>
+<style>
+*{{margin:0;padding:0;box-sizing:border-box}}
+body{{font-family:system-ui,-apple-system,sans-serif;background:#0f172a;color:#e2e8f0;min-height:100vh}}
+.header{{background:linear-gradient(135deg,#1e293b,#334155);padding:1.5rem 2rem;border-bottom:1px solid #334155}}
+.header h1{{font-size:1.5rem;font-weight:700;color:#f1f5f9}}
+.header p{{color:#94a3b8;margin-top:0.25rem;font-size:0.875rem}}
+.layout{{display:grid;grid-template-columns:280px 1fr;min-height:calc(100vh - 80px)}}
+.sidebar{{background:#1e293b;border-right:1px solid #334155;padding:1rem;overflow-y:auto}}
+.sidebar h3{{font-size:0.75rem;text-transform:uppercase;letter-spacing:0.05em;color:#64748b;margin:1rem 0 0.5rem;padding:0 0.5rem}}
+.sidebar ul{{list-style:none}}
+.sidebar li{{padding:0.375rem 0.5rem;border-radius:6px;cursor:pointer;font-size:0.8125rem;font-family:'SF Mono',monospace;color:#94a3b8;transition:all 0.15s}}
+.sidebar li:hover{{background:#334155;color:#f1f5f9}}
+.sidebar li.active{{background:#3b82f6;color:#fff}}
+.main{{padding:1.5rem 2rem;overflow-y:auto}}
+.tab-bar{{display:flex;gap:0.25rem;margin-bottom:1.5rem;border-bottom:1px solid #334155;padding-bottom:0.5rem}}
+.tab{{padding:0.5rem 1rem;border-radius:6px 6px 0 0;cursor:pointer;font-size:0.8125rem;color:#94a3b8;transition:all 0.15s;border:1px solid transparent;border-bottom:none}}
+.tab:hover{{color:#e2e8f0}}
+.tab.active{{background:#1e293b;color:#3b82f6;border-color:#334155}}
+.card{{background:#1e293b;border:1px solid #334155;border-radius:8px;padding:1.25rem;margin-bottom:1rem}}
+.card h3{{font-size:0.9375rem;font-weight:600;margin-bottom:0.75rem;color:#f1f5f9}}
+.endpoint{{display:flex;align-items:center;gap:0.5rem;padding:0.5rem 0;border-bottom:1px solid #1e293b}}
+.method{{padding:0.125rem 0.5rem;border-radius:4px;font-size:0.6875rem;font-weight:700;font-family:monospace;min-width:3.5rem;text-align:center}}
+.method-get{{background:#059669;color:#fff}}
+.method-post{{background:#3b82f6;color:#fff}}
+.method-put{{background:#d97706;color:#fff}}
+.method-delete{{background:#dc2626;color:#fff}}
+.method-patch{{background:#7c3aed;color:#fff}}
+.path{{font-family:'SF Mono',monospace;font-size:0.8125rem;color:#e2e8f0}}
+.file-badge{{display:inline-block;padding:0.125rem 0.375rem;border-radius:3px;font-size:0.6875rem;margin-right:0.375rem;font-weight:600}}
+.badge-js{{background:#f59e0b20;color:#f59e0b}}
+.badge-py{{background:#10b98120;color:#10b981}}
+.badge-json{{background:#3b82f620;color:#3b82f6}}
+.badge-other{{background:#64748b20;color:#64748b}}
+.readme{{white-space:pre-wrap;font-size:0.8125rem;line-height:1.6;color:#cbd5e1;font-family:'SF Mono',monospace;background:#0f172a;padding:1rem;border-radius:6px;max-height:500px;overflow-y:auto}}
+.stat{{text-align:center;padding:0.75rem}}
+.stat .num{{font-size:1.5rem;font-weight:700;color:#3b82f6}}
+.stat .label{{font-size:0.6875rem;color:#64748b;text-transform:uppercase;letter-spacing:0.05em}}
+.stats-row{{display:grid;grid-template-columns:repeat(auto-fit,minmax(100px,1fr));gap:0.5rem;margin-bottom:1.5rem}}
+.req-item{{padding:0.5rem 0;border-bottom:1px solid #1e293b;font-size:0.8125rem;color:#cbd5e1}}
+.empty{{text-align:center;padding:2rem;color:#64748b;font-size:0.875rem}}
+</style>
+</head>
+<body>
+<div class="header">
+  <h1>{project_name}</h1>
+  <p>Backend application &mdash; generated project overview and API explorer</p>
+</div>
+<div class="layout">
+  <div class="sidebar">
+    <h3>Project Files</h3>
+    <ul id="file-list"></ul>
+  </div>
+  <div class="main">
+    <div class="tab-bar">
+      <div class="tab active" data-tab="overview">Overview</div>
+      <div class="tab" data-tab="api">API Endpoints</div>
+      <div class="tab" data-tab="docs">Documentation</div>
+    </div>
+    <div id="tab-overview">
+      <div class="stats-row" id="stats-row"></div>
+      <div class="card"><h3>Requirements</h3><div id="requirements"></div></div>
+    </div>
+    <div id="tab-api" style="display:none">
+      <div class="card"><h3>API Endpoints</h3><div id="endpoints"></div></div>
+    </div>
+    <div id="tab-docs" style="display:none">
+      <div class="card"><h3>README</h3><div class="readme" id="readme-content"></div></div>
+    </div>
+  </div>
+</div>
+<script>
+(function(){{
+  const files = {file_list_json};
+  const endpoints = {endpoints_json};
+  const reqs = {reqs_json};
+  const readme = `{readme_escaped}`;
+
+  // Files sidebar
+  const fl = document.getElementById('file-list');
+  files.forEach(f => {{
+    const li = document.createElement('li');
+    const ext = f.split('.').pop() || '';
+    const cls = ext === 'js' ? 'badge-js' : ext === 'py' ? 'badge-py' : ext === 'json' ? 'badge-json' : 'badge-other';
+    li.innerHTML = '<span class="file-badge ' + cls + '">' + ext + '</span>' + f;
+    fl.appendChild(li);
+  }});
+
+  // Stats
+  const sr = document.getElementById('stats-row');
+  const stats = [
+    {{ num: files.length, label: 'Files' }},
+    {{ num: endpoints.length, label: 'API Endpoints' }},
+    {{ num: reqs.length, label: 'Requirements' }},
+  ];
+  stats.forEach(s => {{
+    const d = document.createElement('div');
+    d.className = 'card stat';
+    d.innerHTML = '<div class="num">' + s.num + '</div><div class="label">' + s.label + '</div>';
+    sr.appendChild(d);
+  }});
+
+  // Requirements
+  const rDiv = document.getElementById('requirements');
+  if (reqs.length === 0) {{
+    rDiv.innerHTML = '<div class="empty">No requirements extracted</div>';
+  }} else {{
+    reqs.forEach(r => {{
+      const d = document.createElement('div');
+      d.className = 'req-item';
+      d.textContent = typeof r === 'string' ? r : (r.description || r.name || JSON.stringify(r));
+      rDiv.appendChild(d);
+    }});
+  }}
+
+  // API endpoints
+  const eDiv = document.getElementById('endpoints');
+  if (endpoints.length === 0) {{
+    eDiv.innerHTML = '<div class="empty">No API endpoints defined in architecture</div>';
+  }} else {{
+    endpoints.forEach(ep => {{
+      const row = document.createElement('div');
+      row.className = 'endpoint';
+      const method = (typeof ep === 'string' ? ep.split(' ')[0] : (ep.method || 'GET')).toUpperCase();
+      const path = typeof ep === 'string' ? ep.replace(/^\\w+\\s+/, '') : (ep.path || ep.endpoint || ep);
+      const mcls = 'method method-' + method.toLowerCase();
+      row.innerHTML = '<span class="' + mcls + '">' + method + '</span><span class="path">' + (typeof path === 'string' ? path : JSON.stringify(path)) + '</span>';
+      eDiv.appendChild(row);
+    }});
+  }}
+
+  // Docs
+  document.getElementById('readme-content').textContent = readme || 'No README generated yet.';
+
+  // Tabs
+  document.querySelectorAll('.tab').forEach(tab => {{
+    tab.addEventListener('click', function() {{
+      document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+      this.classList.add('active');
+      ['overview','api','docs'].forEach(id => {{
+        document.getElementById('tab-' + id).style.display = 'none';
+      }});
+      document.getElementById('tab-' + this.dataset.tab).style.display = 'block';
+    }});
+  }});
+}})();
+</script>
+</body>
+</html>"""
+
+    def _generate_file_listing_html(
+        self,
+        project_name: str,
+        file_list: List[str],
+        css_files: List[str],
+        js_files: List[str],
+        py_files: List[str],
+    ) -> str:
+        """Generate a styled file listing page as fallback for non-backend apps."""
         html = f"""<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -166,8 +378,7 @@ class PreviewService:
         for js in js_files:
             html += f'    <script src="./{js}"></script>\n'
         html += "    </div>\n</body>\n</html>"
-
-        (preview_dir / "index.html").write_text(html, encoding="utf-8")
+        return html
 
     def _detect_app_type(self, preview_dir: Path) -> str:
         """Detect app type: python, node, or static."""
@@ -350,6 +561,32 @@ class PreviewService:
             return str(rel).replace("\\", "/")
         return None
 
+    def _verify_server(self, url_or_port, retries: int = 5, delay: float = 1.0) -> bool:
+        """Check if a preview server is actually responding.
+
+        Tries the server several times with a delay to give it time to start up.
+        Returns True if the server responds, False otherwise.
+        """
+        if url_or_port is None:
+            return False
+        if isinstance(url_or_port, int):
+            url = f"http://localhost:{url_or_port}"
+        else:
+            url = str(url_or_port)
+
+        for attempt in range(retries):
+            try:
+                req = urllib.request.Request(url, method="HEAD")
+                with urllib.request.urlopen(req, timeout=2) as resp:
+                    if resp.status < 500:
+                        return True
+            except Exception:
+                pass
+            if attempt < retries - 1:
+                time.sleep(delay)
+
+        return False
+
     def start_preview(self, project_id: str) -> Dict[str, Any]:
         state = self._get_project_state(project_id)
         if not state:
@@ -362,47 +599,104 @@ class PreviewService:
         self._ensure_index_html(preview_dir, state)
         self._preview_dirs[project_id] = preview_dir
 
-        app_type = self._detect_app_type(preview_dir)
-        deployment = state.get("deployment_config", {})
-
-        # Try Docker first if we have full config
-        if deployment.get("docker_compose") and deployment.get("dockerfile"):
-            try:
-                result = self._start_docker_preview(project_id, preview_dir)
-                if result:
-                    return result
-            except Exception as e:
-                logger.warning("Docker preview failed", error=str(e))
-
-        # Try running Python/Node
-        if app_type == "python":
-            result = self._try_run_python(project_id, preview_dir)
-            if result:
-                return result
-        elif app_type == "node":
-            result = self._try_run_node(project_id, preview_dir)
-            if result:
-                return result
-            # Node run failed; try building and serving static build output
-            if self._try_build_node(preview_dir):
-                self._fix_html_asset_paths(preview_dir)
-
-        # Also try build when package.json is in a subdir (e.g. frontend/) but app_type was static
-        if app_type == "static" and self._find_node_project_dir(preview_dir):
-            if self._try_build_node(preview_dir):
-                self._fix_html_asset_paths(preview_dir)
-
-        # Fallback: static serve via our /preview route
+        # Return static preview immediately — user sees the UI right away
         entry = self._find_entry_point(preview_dir)
         base_url = f"/preview/{project_id}"
         url = f"{base_url}/{entry}" if entry else f"{base_url}/"
+
+        app_type = self._detect_app_type(preview_dir)
+        has_backend = app_type in ("python", "node")
+        deployment = state.get("deployment_config", {})
+        has_docker = bool(deployment.get("docker_compose") and deployment.get("dockerfile"))
+
+        # If there's a backend to run, launch it in the background
+        if has_backend or has_docker:
+            self._backend_status[project_id] = {
+                "status": "starting",
+                "message": f"Starting {app_type} backend...",
+            }
+            thread = threading.Thread(
+                target=self._launch_backend_background,
+                args=(project_id, preview_dir, app_type, deployment),
+                daemon=True,
+            )
+            thread.start()
+
         return {
             "status": "running",
             "mode": "static",
             "url": url,
             "entry": entry or "index.html",
-            "message": "Serving generated files (index.html auto-created if missing)",
+            "backend_status": "starting" if (has_backend or has_docker) else "none",
         }
+
+    def _launch_backend_background(
+        self, project_id: str, preview_dir: Path, app_type: str, deployment: dict
+    ) -> None:
+        """Try to start a live backend server in the background.
+        Updates _backend_status and _preview_ports when ready."""
+        try:
+            result = None
+
+            # Try Docker first
+            if deployment.get("docker_compose") and deployment.get("dockerfile"):
+                try:
+                    result = self._start_docker_preview(project_id, preview_dir)
+                    if result and self._verify_server(result.get("url") or result.get("port"), retries=10, delay=2.0):
+                        self._backend_status[project_id] = {
+                            "status": "live",
+                            "mode": result.get("mode", "docker"),
+                            "url": result["url"],
+                        }
+                        logger.info("Background Docker preview is live", project_id=project_id)
+                        return
+                    elif result:
+                        self.stop_preview(project_id)
+                        result = None
+                except Exception as e:
+                    logger.warning("Background Docker preview failed", error=str(e))
+
+            # Try Python
+            if app_type == "python":
+                result = self._try_run_python(project_id, preview_dir)
+                if result and self._verify_server(result.get("url") or result.get("port"), retries=10, delay=2.0):
+                    self._backend_status[project_id] = {
+                        "status": "live",
+                        "mode": "python",
+                        "url": result["url"],
+                    }
+                    logger.info("Background Python preview is live", project_id=project_id)
+                    return
+                elif result:
+                    self.stop_preview(project_id)
+
+            # Try Node
+            if app_type == "node":
+                result = self._try_run_node(project_id, preview_dir)
+                if result and self._verify_server(result.get("url") or result.get("port"), retries=15, delay=2.0):
+                    self._backend_status[project_id] = {
+                        "status": "live",
+                        "mode": "node",
+                        "url": result["url"],
+                    }
+                    logger.info("Background Node preview is live", project_id=project_id)
+                    return
+                elif result:
+                    self.stop_preview(project_id)
+
+            # Nothing worked
+            self._backend_status[project_id] = {
+                "status": "failed",
+                "message": f"Could not start {app_type} backend",
+            }
+            logger.warning("Background backend launch failed", project_id=project_id, app_type=app_type)
+
+        except Exception as e:
+            self._backend_status[project_id] = {
+                "status": "failed",
+                "message": str(e)[:200],
+            }
+            logger.error("Background backend launch error", error=str(e))
 
     def _start_docker_preview(self, project_id: str, preview_dir: Path) -> Optional[Dict[str, Any]]:
         compose_file = preview_dir / "docker-compose.yml"
@@ -437,17 +731,23 @@ class PreviewService:
                 proc.kill()
             stopped = True
         self._preview_ports.pop(project_id, None)
+        self._backend_status.pop(project_id, None)
         return stopped
 
     def get_preview_info(self, project_id: str) -> Optional[Dict[str, Any]]:
-        if project_id in self._preview_ports:
-            port = self._preview_ports[project_id]
+        backend = self._backend_status.get(project_id, {})
+        backend_status = backend.get("status", "none")
+
+        # If backend is live, return the live server URL
+        if backend_status == "live" and backend.get("url"):
             return {
                 "status": "running",
-                "mode": "python",
-                "url": f"http://localhost:{port}",
-                "port": port,
+                "mode": backend.get("mode", "live"),
+                "url": backend["url"],
+                "backend_status": "live",
             }
+
+        # Otherwise return static preview URL with backend status
         if project_id in self._preview_dirs:
             base_url = f"/preview/{project_id}"
             entry = self._find_entry_point(self._preview_dirs[project_id])
@@ -456,5 +756,7 @@ class PreviewService:
                 "mode": "static",
                 "url": f"{base_url}/{entry}" if entry else f"{base_url}/",
                 "entry": entry,
+                "backend_status": backend_status,
+                "backend_message": backend.get("message"),
             }
         return None

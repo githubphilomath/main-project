@@ -112,6 +112,9 @@ class AgentState(TypedDict, total=False):
     updated_at: str
     completed: bool
 
+    # Debugging details
+    debug_issues: List[Dict[str, Any]]
+
     # User modification request (when re-running coding with feedback)
     modification_request: Optional[str]
 

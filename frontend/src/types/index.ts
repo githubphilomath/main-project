@@ -83,6 +83,7 @@ export interface DocumentationArtifact {
 }
 
 export interface WorkflowState {
+  project_id?: string;
   current_phase: string;
   current_agent: string | null;
   phase_history: string[];

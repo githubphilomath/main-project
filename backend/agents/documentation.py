@@ -44,36 +44,71 @@ class DocumentationAgent(BaseAgent):
             query="documentation best practices and standards"
         )
 
-        # Build prompt
-        system_prompt = """You are a technical writer. Generate comprehensive
-        project documentation. Documentation is mandatory and must always accompany
-        the codebase. Never skip documentation."""
+        system_prompt = (
+            "You are a technical writer who creates documentation so clear that any "
+            "developer can set up, run, and understand the project in under 5 minutes. "
+            "Your README files are the gold standard."
+        )
+
+        code_summaries = []
+        for a in code_artifacts[:15]:
+            fp = a.get("file_path", "") if isinstance(a, dict) else getattr(a, "file_path", "")
+            content = a.get("content", "") if isinstance(a, dict) else getattr(a, "content", "")
+            code_summaries.append({"file_path": fp, "content": content[:2000]})
+
+        deployment = state.get("deployment_config", {}) or {}
+        deploy_steps = deployment.get("deployment_steps", [])
+        env_vars = deployment.get("env_variables", [])
+
         prompt = f"""
-        Generate documentation for the following project:
+Generate comprehensive documentation for this project.
 
-        Project: {state['project_name']}
-        Description: {state['project_description']}
-        Requirements: {json.dumps(requirements, indent=2)}
-        Architecture: {json.dumps(architecture, indent=2)}
-        Code Files: {len(code_artifacts)} files
+PROJECT: {state['project_name']}
+DESCRIPTION: {state['project_description']}
+REQUIREMENTS: {json.dumps(requirements, indent=2)}
+ARCHITECTURE: {json.dumps(architecture, indent=2)}
 
-        Best practices:
-        {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
+CODE FILES ({len(code_artifacts)} total):
+{json.dumps(code_summaries, indent=2)}
 
-        ALWAYS generate the following documentation (do not skip any):
-        1. README.md - Project overview, setup instructions, usage, and examples
-        2. ARCHITECTURE.md - System architecture documentation
-        3. API_DOCS.md - API documentation (if the project has APIs; otherwise CONTRIBUTING.md)
+DEPLOYMENT INFO:
+- Steps: {json.dumps(deploy_steps, indent=2)}
+- Env vars: {json.dumps(env_vars, indent=2)}
 
-        Provide a JSON response with:
-        - docs: List of documentation files, each with:
-          - doc_type: README/ARCHITECTURE/API_DOCS/CONTRIBUTING
-          - content: Complete documentation content
-          - description: What this doc covers
+GENERATE THESE DOCUMENTS:
 
-        Documentation must always be generated alongside code. Include setup, usage,
-        and clear explanations.
-        """
+1. README (doc_type: "README"):
+   - Project title and one-line description
+   - Features list with brief descriptions
+   - Prerequisites (language runtime, dependencies)
+   - Installation: exact commands to clone, install deps, and run
+   - Usage: how to use the app with examples
+   - Project structure: file tree with descriptions
+   - Configuration: environment variables, settings
+   - Screenshots/demo description (describe what the user will see)
+   - License placeholder
+
+2. ARCHITECTURE (doc_type: "ARCHITECTURE"):
+   - High-level overview diagram (ASCII art)
+   - Component descriptions with responsibilities
+   - Data flow between components
+   - Technology choices and rationale
+   - Key design decisions
+
+3. API_DOCS (doc_type: "API_DOCS"):
+   - If the project has API endpoints: document each with method, path,
+     request body, response, and example curl commands
+   - If no API: document the public interfaces/functions with params and return values
+
+Respond with ONLY a JSON object:
+{{
+  "docs": [
+    {{"doc_type": "README", "content": "full markdown content", "description": "what this covers"}},
+    {{"doc_type": "ARCHITECTURE", "content": "full markdown content", "description": "what this covers"}},
+    {{"doc_type": "API_DOCS", "content": "full markdown content", "description": "what this covers"}}
+  ]
+}}
+"""
 
         response_format = {
             "docs": [

@@ -5,10 +5,12 @@
  */
 
 import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Send, Loader2, Brain } from 'lucide-react';
+import { Send, Loader2, History } from 'lucide-react';
 import { Button } from '@/components/ui/Button';
 import { Card, CardContent } from '@/components/ui/Card';
 import { MessageBubble } from './MessageBubble';
+import { ThinkingCard, type ThinkingCardProps } from './ThinkingCard';
+import { ProjectHistory } from './ProjectHistory';
 import { useStore } from '@/store/useStore';
 import { projectsApi } from '@/services/api';
 import type { Message } from '@/types';
@@ -17,7 +19,9 @@ import { AGENT_DISPLAY_NAMES } from '@/types';
 export const ChatPanel: React.FC = () => {
   const [input, setInput] = useState('');
   const [isSubmitting, setIsSubmitting] = useState(false);
-  const [thinkingMessage, setThinkingMessage] = useState<string | null>(null);
+  const [activeThinking, setActiveThinking] = useState<ThinkingCardProps | null>(null);
+  const [completedCards, setCompletedCards] = useState<ThinkingCardProps[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const eventSourceRef = useRef<EventSource | null>(null);
   const { messages, addMessage, currentProject, setCurrentProject, setLoading, setStreaming, setWorkflowState } = useStore();
@@ -29,7 +33,7 @@ export const ChatPanel: React.FC = () => {
 
   useEffect(() => {
     scrollToBottom();
-  }, [messages, thinkingMessage]);
+  }, [messages, activeThinking, completedCards]);
 
   // Clean up EventSource on unmount
   useEffect(() => {
@@ -41,6 +45,24 @@ export const ChatPanel: React.FC = () => {
     };
   }, []);
 
+  // Persist messages to backend whenever they change
+  const persistTimeoutRef = useRef<number | null>(null);
+  useEffect(() => {
+    const pid = currentProject?.id;
+    if (!pid || messages.length === 0) return;
+    if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    persistTimeoutRef.current = window.setTimeout(() => {
+      const serializable = messages.map((m) => ({
+        ...m,
+        timestamp: m.timestamp instanceof Date ? m.timestamp.toISOString() : m.timestamp,
+      }));
+      projectsApi.saveMessages(pid, serializable).catch(() => {});
+    }, 2000);
+    return () => {
+      if (persistTimeoutRef.current) clearTimeout(persistTimeoutRef.current);
+    };
+  }, [messages, currentProject?.id]);
+
   const connectToEvents = useCallback((projectId: string) => {
     // Close any existing connection
     if (eventSourceRef.current) {
@@ -51,59 +73,64 @@ export const ChatPanel: React.FC = () => {
     eventSourceRef.current = es;
     setStreaming(true);
 
-    // agent_start: show thinking message
+    // agent_start: show thinking card
     es.addEventListener('agent_start', (e) => {
       try {
         const data = JSON.parse(e.data);
         const agentName = data.agent;
-        const displayName = AGENT_DISPLAY_NAMES[agentName] || agentName;
-        const message = data.message || `${displayName} is working...`;
-        setThinkingMessage(message);
+        if (agentName === 'orchestrator') return;
+        const thinkingText = data.thinking || data.message || `${AGENT_DISPLAY_NAMES[agentName] || agentName} is working...`;
+        setActiveThinking({
+          agentName,
+          status: 'thinking',
+          thinkingText,
+        });
       } catch { /* ignore parse errors */ }
     });
 
-    // agent_complete: add verbose completion message to chat
+    // agent_complete: finalize thinking card + move to completed
     es.addEventListener('agent_complete', (e) => {
       try {
         const data = JSON.parse(e.data);
         const agentName = data.agent;
-        // Don't show orchestrator completions as they're internal routing decisions
-        if (agentName !== 'orchestrator') {
-          const msg: Message = {
-            id: `agent-${agentName}-${Date.now()}`,
-            role: 'assistant',
-            content: data.message || `**${AGENT_DISPLAY_NAMES[agentName] || agentName}** completed.`,
-            timestamp: new Date(),
-            projectId,
-          };
-          addMessage(msg);
-        }
-        setThinkingMessage(null);
+        if (agentName === 'orchestrator') return;
+        const card: ThinkingCardProps = {
+          agentName,
+          status: 'complete',
+          thinkingText: '',
+          summary: data.summary || data.message,
+          details: data.details,
+          durationMs: data.duration_ms,
+        };
+        setCompletedCards((prev) => [...prev, card]);
+        setActiveThinking(null);
       } catch { /* ignore parse errors */ }
     });
 
-    // agent_error: show error
+    // agent_error: show error card
     es.addEventListener('agent_error', (e) => {
       try {
         const data = JSON.parse(e.data);
-        setThinkingMessage(null);
-        const msg: Message = {
-          id: `error-${data.agent}-${Date.now()}`,
-          role: 'system',
-          content: data.message || `Agent error: unknown`,
-          timestamp: new Date(),
-          projectId,
+        const agentName = data.agent;
+        const card: ThinkingCardProps = {
+          agentName,
+          status: 'error',
+          thinkingText: '',
+          summary: data.message || 'Agent error: unknown',
+          durationMs: data.duration_ms,
         };
-        addMessage(msg);
+        setCompletedCards((prev) => [...prev, card]);
+        setActiveThinking(null);
       } catch { /* ignore parse errors */ }
     });
 
     // workflow_complete
     es.addEventListener('workflow_complete', async (e) => {
-      setThinkingMessage(null);
+      setActiveThinking(null);
       setStreaming(false);
       setLoading(false);
       let isModifyCompletion = false;
+      let changeSummary = '';
       try {
         const data = JSON.parse((e as MessageEvent).data);
         isModifyCompletion = data.phase === 'coding';
@@ -112,13 +139,30 @@ export const ChatPanel: React.FC = () => {
           const state = await projectsApi.getState(pid);
           if (state) setWorkflowState(state);
         }
+        if (isModifyCompletion) {
+          const parts: string[] = [];
+          if (data.files_modified?.length) parts.push(`**Modified:** ${data.files_modified.join(', ')}`);
+          if (data.files_added?.length) parts.push(`**Added:** ${data.files_added.join(', ')}`);
+          if (data.files_removed?.length) parts.push(`**Removed:** ${data.files_removed.join(', ')}`);
+          changeSummary = parts.length > 0
+            ? parts.join('\n')
+            : (data.change_summary || '');
+        }
       } catch { /* ignore */ }
+
+      let content: string;
+      if (isModifyCompletion) {
+        content = changeSummary
+          ? `Modifications applied successfully!\n\n${changeSummary}`
+          : 'Modifications applied successfully! Your changes have been updated in place.';
+      } else {
+        content = 'Workflow completed successfully! All agents have finished their work.';
+      }
+
       const msg: Message = {
         id: `done-${Date.now()}`,
         role: 'assistant',
-        content: isModifyCompletion
-          ? 'Modifications applied successfully! Your changes have been updated in place.'
-          : 'Workflow completed successfully! All agents have finished their work.',
+        content,
         timestamp: new Date(),
         projectId,
       };
@@ -129,7 +173,7 @@ export const ChatPanel: React.FC = () => {
 
     // workflow_error
     es.addEventListener('workflow_error', (e) => {
-      setThinkingMessage(null);
+      setActiveThinking(null);
       setStreaming(false);
       setLoading(false);
       let errorMsg = 'Workflow failed';
@@ -149,12 +193,9 @@ export const ChatPanel: React.FC = () => {
       eventSourceRef.current = null;
     });
 
-    // Handle connection errors
     es.onerror = () => {
-      // EventSource will auto-reconnect on non-fatal errors.
-      // On fatal close, just clean up.
       if (es.readyState === EventSource.CLOSED) {
-        setThinkingMessage(null);
+        setActiveThinking(null);
         setStreaming(false);
         eventSourceRef.current = null;
       }
@@ -178,6 +219,8 @@ export const ChatPanel: React.FC = () => {
     setInput('');
     setIsSubmitting(true);
     setLoading(true);
+    setCompletedCards([]);
+    setActiveThinking(null);
 
     try {
       if (isModifyMode && currentProject) {
@@ -214,7 +257,7 @@ export const ChatPanel: React.FC = () => {
     } catch (error: unknown) {
       const err = error as { response?: { data?: { detail?: string | unknown[] } }; message?: string };
       const d = err.response?.data?.detail;
-      const detail = typeof d === 'string' ? d : Array.isArray(d) ? (d[0]?.msg ?? JSON.stringify(d)) : undefined;
+      const detail = typeof d === 'string' ? d : Array.isArray(d) ? ((d[0] as any)?.msg ?? JSON.stringify(d)) : undefined;
       const msg = detail || (err.message ?? 'Failed to create project');
       const errorMessage: Message = {
         id: (Date.now() + 1).toString(),
@@ -230,8 +273,27 @@ export const ChatPanel: React.FC = () => {
   };
 
   return (
-    <Card className="h-full flex flex-col overflow-hidden">
+    <Card className="h-full flex flex-col overflow-hidden relative">
+      {/* Project History Overlay */}
+      <ProjectHistory isOpen={showHistory} onClose={() => setShowHistory(false)} />
+
       <CardContent className="flex-1 min-h-0 flex flex-col p-0">
+        {/* History toggle bar */}
+        <div className="flex items-center justify-between px-4 py-2 border-b flex-shrink-0">
+          <button
+            onClick={() => setShowHistory(true)}
+            className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+          >
+            <History className="h-3.5 w-3.5" />
+            History
+          </button>
+          {currentProject && (
+            <span className="text-xs text-muted-foreground truncate ml-2">
+              {currentProject.name}
+            </span>
+          )}
+        </div>
+
         {/* Messages Area */}
         <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
           {messages.length === 0 && (
@@ -252,15 +314,17 @@ export const ChatPanel: React.FC = () => {
             <MessageBubble key={message.id} message={message} />
           ))}
 
-          {/* Thinking indicator - shows current agent activity */}
-          {thinkingMessage && (
-            <div className="flex items-center gap-2 text-blue-600 dark:text-blue-400 animate-pulse">
-              <Brain className="h-4 w-4" />
-              <span className="text-sm font-medium">{thinkingMessage}</span>
-            </div>
+          {/* Completed agent thinking cards */}
+          {completedCards.map((card, i) => (
+            <ThinkingCard key={`${card.agentName}-${i}`} {...card} />
+          ))}
+
+          {/* Active thinking card */}
+          {activeThinking && (
+            <ThinkingCard {...activeThinking} />
           )}
 
-          {isSubmitting && !thinkingMessage && (
+          {isSubmitting && !activeThinking && (
             <div className="flex items-center gap-2 text-muted-foreground">
               <Loader2 className="h-4 w-4 animate-spin" />
               <span className="text-sm">{isModifyMode ? 'Applying modifications...' : 'Creating project...'}</span>

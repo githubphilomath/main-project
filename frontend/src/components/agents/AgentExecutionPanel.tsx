@@ -11,11 +11,18 @@ import { useStore } from '@/store/useStore';
 import { useQuery } from '@tanstack/react-query';
 import { projectsApi } from '@/services/api';
 import { AGENT_NAMES, AGENT_DISPLAY_NAMES, type AgentExecutionState, type AgentOutput } from '@/types';
-import { ChevronDown, ChevronUp, Activity } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Activity } from 'lucide-react';
 
-export const AgentExecutionPanel: React.FC = () => {
+interface AgentExecutionPanelProps {
+  isExpanded: boolean;
+  onToggle: () => void;
+}
+
+export const AgentExecutionPanel: React.FC<AgentExecutionPanelProps> = ({
+  isExpanded,
+  onToggle,
+}) => {
   const { currentProject, workflowState, setProjectStatus } = useStore();
-  const [isExpanded, setIsExpanded] = useState(true);
   const [agentOutputs, setAgentOutputs] = useState<AgentExecutionState>({});
 
   // Initialize agent outputs state
@@ -234,68 +241,79 @@ export const AgentExecutionPanel: React.FC = () => {
         deployment: 'deployment',
       }).find(([phase]) => phase === status.current_phase)?.[1] : null);
 
+  // Collapsed: thin vertical strip with icon + toggle
+  if (!isExpanded) {
+    return (
+      <div className="h-full flex flex-col items-center rounded-2xl border bg-card shadow-sm py-3 gap-3">
+        <button
+          onClick={onToggle}
+          className="p-1.5 rounded-md hover:bg-muted transition-colors"
+          aria-label="Expand agent panel"
+        >
+          <ChevronLeft className="w-4 h-4 text-muted-foreground" />
+        </button>
+        <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+        <span className="text-[10px] font-medium text-muted-foreground [writing-mode:vertical-lr] rotate-180 select-none">
+          Agents
+        </span>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full flex flex-col overflow-hidden rounded-2xl border bg-card shadow-sm">
-      {/* Header - fixed */}
+      {/* Header */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b">
         <div className="flex items-center gap-2">
           <Activity className="w-4 h-4 text-blue-600 dark:text-blue-400" />
           <h2 className="text-sm font-semibold">Agent Execution Monitor</h2>
         </div>
         <button
-          onClick={() => setIsExpanded(!isExpanded)}
+          onClick={onToggle}
           className="p-1 rounded-md hover:bg-muted transition-colors"
-          aria-label={isExpanded ? 'Collapse' : 'Expand'}
+          aria-label="Collapse agent panel"
         >
-          {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
-          ) : (
-            <ChevronUp className="w-4 h-4 text-muted-foreground" />
-          )}
+          <ChevronRight className="w-4 h-4 text-muted-foreground" />
         </button>
       </div>
 
-      {/* Workflow Progress - fixed */}
-      {isExpanded && (
-        <div className="flex-shrink-0 px-4 py-3 border-b">
-          <WorkflowProgressBar
-            progress={status?.progress || 0}
-            currentPhase={status?.current_phase}
-          />
-        </div>
-      )}
+      {/* Workflow Progress */}
+      <div className="flex-shrink-0 px-4 py-3 border-b">
+        <WorkflowProgressBar
+          progress={status?.progress || 0}
+          currentPhase={status?.current_phase}
+        />
+      </div>
 
-      {/* Agent Cards List - scrollable */}
-      {isExpanded && (
-        <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
-          <AnimatePresence>
-            {AGENT_NAMES.map((agentName, index) => {
-              const agentData = agentOutputs[agentName];
-              const isActive = currentAgent === agentName;
-              
-              return (
-                <motion.div
-                  key={agentName}
-                  initial={{ opacity: 0, y: 20 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  transition={{ delay: index * 0.05 }}
-                >
-                  <AgentCard
-                    agentName={agentName}
-                    displayName={AGENT_DISPLAY_NAMES[agentName]}
-                    output={agentData?.output || null}
-                    logs={agentData?.logs || []}
-                    status={agentData?.status || 'pending'}
-                    executionTime={agentData?.executionTime || null}
-                    retryCount={agentData?.retryCount || 0}
-                    isActive={isActive}
-                  />
-                </motion.div>
-              );
-            })}
-          </AnimatePresence>
-        </div>
-      )}
+      {/* Agent Cards List */}
+      <div className="flex-1 min-h-0 overflow-y-auto p-3 space-y-2">
+        <AnimatePresence>
+          {AGENT_NAMES.map((agentName, index) => {
+            const agentData = agentOutputs[agentName];
+            const isActive = currentAgent === agentName;
+
+            return (
+              <motion.div
+                key={agentName}
+                initial={{ opacity: 0, y: 20 }}
+                animate={{ opacity: 1, y: 0 }}
+                transition={{ delay: index * 0.05 }}
+              >
+                <AgentCard
+                  agentName={agentName}
+                  displayName={AGENT_DISPLAY_NAMES[agentName]}
+                  output={agentData?.output || null}
+                  logs={agentData?.logs || []}
+                  status={agentData?.status || 'pending'}
+                  executionTime={agentData?.executionTime || null}
+                  retryCount={agentData?.retryCount || 0}
+                  isActive={isActive}
+                />
+              </motion.div>
+            );
+          })}
+        </AnimatePresence>
+      </div>
     </div>
   );
 };

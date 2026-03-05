@@ -1,239 +1,236 @@
 # Quick Start Guide
 
 Multi-Agent Autonomous Software Development Platform.
-Branch: `mariena-new`
+Branch: `mariena-openai`
 
 ---
 
 ## Prerequisites
 
-| Tool                  | Minimum version | Check with                                            |
-| --------------------- | --------------- | ----------------------------------------------------- |
-| Docker Desktop        | 20+             | `docker --version`                                  |
-| Docker Compose        | 2.x             | `docker compose version`                            |
-| Node.js               | 18+             | `node -v`                                           |
-| npm                   | 9+              | `npm -v`                                            |
-| Google Gemini API key | --              | [Get one here](https://makersuite.google.com/app/apikey) |
+| Tool           | Minimum version | Check with             |
+| -------------- | --------------- | ---------------------- |
+| Docker Desktop | 20+             | `docker --version`     |
+| Docker Compose | 2.x             | `docker compose version` |
+| Node.js        | 18+             | `node -v`              |
+| npm            | 9+              | `npm -v`               |
 
 > **Python is NOT required locally.** The backend runs entirely inside Docker (Python 3.11).
 
+### API keys you need
+
+| Key | What it's for | Where to get it |
+| --- | ------------- | --------------- |
+| Azure OpenAI API key | Chat / code generation (GPT-4) | Azure Portal > your OpenAI resource > Keys |
+| Azure OpenAI Endpoint | API endpoint URL | Azure Portal > your OpenAI resource > Overview |
+| Gemini API key | Embeddings only (RAG vector search) | [Google AI Studio](https://makersuite.google.com/app/apikey) |
+
 ---
 
-## Step 0 -- Clone the repo ignore if you already have it. but checkout mariena-new anyways
+## Step 1 — Clone the repo
 
 ```bash
 git clone https://github.com/githubphilomath/main-project.git
 cd main-project
-git checkout mariena-new
+git checkout mariena-openai
 ```
 
 ---
 
-## Step 1 -- Backend environment file
+## Step 2 — Create the backend `.env` file
 
 ```bash
 cd backend
 cp env.example .env
 ```
 
-Open `backend/.env` and replace the placeholder API key:
+Open `backend/.env` in any text editor and fill in your keys:
 
+```env
+# Azure OpenAI (for chat/code generation)
+AZURE_OPENAI_API_KEY=paste_your_azure_key_here
+AZURE_OPENAI_ENDPOINT=https://your-resource.openai.azure.com/
+AZURE_OPENAI_API_VERSION=2024-02-15-preview
+AZURE_OPENAI_CHAT_DEPLOYMENT=gpt-4
+
+# Gemini (for embeddings/RAG only)
+GEMINI_API_KEY=paste_your_gemini_key_here
+EMBEDDING_MODEL=text-embedding-004
 ```
-GEMINI_API_KEY=your_actual_gemini_api_key_here
-```
 
-Leave everything else at the defaults. The key settings are:
+Leave everything else at the defaults.
 
-| Variable           | Default                                                          | Notes                                             |
-| ------------------ | ---------------------------------------------------------------- | ------------------------------------------------- |
-| `GEMINI_API_KEY` | (you must set this)                                              | Google AI Studio API key                          |
-| `GEMINI_MODEL`   | `gemini-2.5-flash`                                             | Can also use `gemini-2.5-pro` (slower, smarter) |
-| `DATABASE_URL`   | `postgresql://postgres:postgres@localhost:5432/agent_platform` | Used by local scripts only; Docker overrides this |
-| `CHROMA_PORT`    | `8010`                                                         | Host port for ChromaDB (8000 is used by the API)  |
+> **Important:** If your brother/sister shares the `.env` file with you, just drop it into `backend/.env` and skip the editing. All keys are pre-filled.
 
 ---
 
-## Step 2 -- Start the backend (Docker)
+## Step 3 — Start the backend (Docker)
 
-From the project root:
-
-```bash
-./run-backend.sh
-```
-
-Or manually:
+Make sure Docker Desktop is running, then from the **project root**:
 
 ```bash
 cd backend
-docker compose up -d postgres chroma api
+docker compose up -d --build
 ```
 
 This starts three containers:
 
-| Container                   | Port | What it does           |
-| --------------------------- | ---- | ---------------------- |
+| Container                 | Port | What it does           |
+| ------------------------- | ---- | ---------------------- |
 | `agent_platform_postgres` | 5432 | PostgreSQL 15 database |
 | `agent_platform_chroma`   | 8010 | ChromaDB vector store  |
 | `agent_platform_api`      | 8000 | FastAPI backend        |
 
-**First run** takes 2-3 minutes (Docker builds the image and installs Python packages).
+**First run takes 3-5 minutes** (Docker builds the image and installs Python packages).
 Subsequent starts take ~10 seconds.
 
-### Verify the backend is running
+### Verify the backend
 
-Wait 30 seconds, then:
+Wait 30 seconds after the command finishes, then:
 
 ```bash
 curl http://localhost:8000/health
-# Expected: {"status":"healthy"}
 ```
 
-Or open http://localhost:8000/docs in a browser to see the Swagger UI.
+You should see:
+```json
+{"status":"healthy"}
+```
+
+If it doesn't respond yet, wait another 15 seconds and try again.
 
 ---
 
-## Step 3 -- Start the frontend
+## Step 4 — Start the frontend
+
+Open a **new terminal** (keep the backend terminal open):
 
 ```bash
 cd frontend
-npm install          # first time only
-cp .env.example .env # first time only
+npm install
+cp .env.example .env
 npm run dev
 ```
 
 The frontend starts at **http://localhost:3000**.
 
+> `npm install` only needs to run the first time (or after pulling new changes).
+
 ---
 
-## Step 4 -- Use the app
+## Step 5 — Use the app
 
-1. Open http://localhost:3000
-2. Type a project description in the chat panel, e.g.:`create a tic tac toe game in python`
-3. Press Enter (or click Send)
+1. Open **http://localhost:3000** in your browser
+2. Type a project description, e.g.: `create a product management app` or `build a tic tac toe game`
+3. Press Enter
 4. Watch the agents work in real-time:
-   - **Left panel**: Chat with live "thinking" indicators and agent summaries
-   - **Center panel**: Generated code files (click a file to view)
-   - **Right panel**: Agent execution status with progress bar
+   - **Left panel** — Chat with live thinking indicators and agent progress
+   - **Center panel** — Generated code files, docs, and full app preview
+   - **Right panel** — Agent execution status with progress bar
+5. When complete, click **"Full App"** to preview, or **"Download All"** to get a zip
 
-A full run takes 3-8 minutes depending on project complexity and Gemini API latency.
+A full run takes **2-8 minutes** depending on project complexity.
 
 ---
 
 ## Stopping everything
 
 ```bash
-# Stop all containers (keeps data)
+# Stop backend containers (keeps data)
 cd backend
 docker compose stop
 
-# Stop and remove containers + volumes (clean slate)
+# Stop and remove containers + data (clean slate)
 cd backend
 docker compose down -v
 ```
 
-To stop the frontend, press `Ctrl+C` in the terminal running `npm run dev`.
+Stop the frontend by pressing `Ctrl+C` in the terminal running `npm run dev`.
+
+---
+
+## Restarting after a break
+
+```bash
+# Terminal 1: Start backend
+cd backend
+docker compose up -d
+
+# Terminal 2: Start frontend
+cd frontend
+npm run dev
+```
+
+No need to rebuild or reinstall unless you pulled new code.
 
 ---
 
 ## Troubleshooting
 
+### Docker not running
+
+If you see `Cannot connect to the Docker daemon`:
+- Open **Docker Desktop** and wait until it shows "Running"
+- Then retry the `docker compose` commands
+
 ### Backend won't start / API unhealthy
 
-**Check container status:**
-
 ```bash
 cd backend
-docker compose ps
+docker compose ps        # Check container status
+docker compose logs api --tail 50   # Check API logs
 ```
 
-All three containers should show `Up`. If `agent_platform_api` shows `Restarting` or `Exited`:
+| Symptom | Cause | Fix |
+| ------- | ----- | --- |
+| Container keeps restarting | Bad `.env` or missing key | Check `backend/.env` has valid keys |
+| `port 5432 already in use` | Local PostgreSQL running | `brew services stop postgresql` or change port |
+| `port 8000 already in use` | Something else on 8000 | `lsof -i :8000` then kill the process |
+
+### "Content filter" or empty code files
+
+Azure OpenAI's content filter sometimes blocks requests. The code has a built-in fallback that sanitizes the prompt and retries. If it still fails:
+- Check `docker compose logs api --tail 50` for `content_filter` errors
+- Try a simpler project description (e.g., "todo list app" instead of complex apps)
+
+### `.env` changes not taking effect
+
+Docker caches environment variables. `restart` does NOT reload `.env`:
 
 ```bash
-docker compose logs api --tail 50
-```
-
-**Common causes:**
-
-| Symptom                      | Cause                    | Fix                                                                                    |
-| ---------------------------- | ------------------------ | -------------------------------------------------------------------------------------- |
-| `ModuleNotFoundError`      | Image not built          | `docker compose build api` then `docker compose up -d api`                         |
-| `GEMINI_API_KEY` error     | Missing or invalid key   | Check `backend/.env` has a valid key                                                 |
-| `port 5432 already in use` | Local PostgreSQL running | Stop it:`brew services stop postgresql` or change the port in `docker-compose.yml` |
-| `port 8000 already in use` | Another process on 8000  | `lsof -i :8000` to find it, then kill or change port                                 |
-
-### "Orchestrator stuck" / workflow never progresses
-
-**Check API logs:**
-
-```bash
-cd backend
-docker compose logs api --tail 100
-```
-
-| Log message                               | Cause                    | Fix                                                                                                                 |
-| ----------------------------------------- | ------------------------ | ------------------------------------------------------------------------------------------------------------------- |
-| `404 models/gemini-pro is not found`    | Outdated model name      | Set `GEMINI_MODEL=gemini-2.5-flash` in `backend/.env`, then `docker compose restart api`                      |
-| `404 models/embedding-001 is not found` | Outdated embedding model | Already fixed in code (`gemini-embedding-001`). If still appearing: `docker compose up -d --force-recreate api` |
-| `Recursion limit of 25 reached`         | Graph never terminated   | Already fixed (limit raised to 50, routing reordered). Rebuild:`docker compose up -d --force-recreate api`        |
-| `Expecting value: line 1 column 1`      | JSON parsing failure     | Already fixed (`parse_json_response` strips markdown fences). Rebuild if needed.                                  |
-
-### .env changes not taking effect
-
-Docker Compose caches environment variables. A simple `restart` does NOT reload `.env`:
-
-```bash
-# WRONG -- does not reload .env
+# WRONG
 docker compose restart api
 
-# CORRECT -- recreates the container with fresh env
+# CORRECT — recreates with fresh env
 docker compose up -d --force-recreate api
 ```
 
-### Frontend shows "No project output yet" even after completion
+### Frontend shows "No project output yet"
 
-The frontend needs both `projectStatus` and `workflowState` to display output. If the status panel shows "completed" but the center is empty:
+- **Hard refresh** the browser: `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows)
+- Wait 5 seconds after workflow completes for state to sync
+- Check browser console (`F12` > Console) for errors
 
-1. **Hard refresh** the browser: `Cmd+Shift+R` (Mac) / `Ctrl+Shift+R` (Windows)
-2. The state poll may need a moment -- wait 5 seconds after completion
-3. Check browser console for errors (`F12` > Console)
-
-### Testing agent error: `'dict' object has no attribute 'file_path'`
-
-This was a bug in the testing agent that accessed code artifacts as objects instead of dicts. It is fixed in the current code. If you still see it:
+### npm install fails
 
 ```bash
-docker compose up -d --force-recreate api
+# Clear cache and retry
+rm -rf node_modules package-lock.json
+npm install
 ```
-
-### Code viewer shows black/unreadable text
-
-Fixed in the current frontend code. Hard refresh the browser if you still see it.
-
-### Gemini API rate limits / 429 errors
-
-The free tier of the Gemini API has rate limits. If you see `429 Resource Exhausted`:
-
-- Wait 60 seconds and try again
-- Use `gemini-2.5-flash` (higher rate limits than `gemini-2.5-pro`)
-- Check your usage at https://console.cloud.google.com/apis/dashboard
 
 ---
 
-## API Endpoints Reference
+## Quick reference
 
-Base URL: `http://localhost:8000/api/v1`
-
-| Method   | Endpoint                   | Description                                      |
-| -------- | -------------------------- | ------------------------------------------------ |
-| `POST` | `/projects`              | Create a new project                             |
-| `GET`  | `/projects/{id}`         | Get project details                              |
-| `POST` | `/projects/{id}/execute` | Start workflow (returns 202, runs in background) |
-| `GET`  | `/projects/{id}/status`  | Get project status + progress                    |
-| `GET`  | `/projects/{id}/state`   | Get full state with all artifacts                |
-| `GET`  | `/projects/{id}/events`  | SSE stream of real-time agent events             |
-| `GET`  | `/health`                | Health check                                     |
-
-Full Swagger docs: http://localhost:8000/docs
+| What | Command |
+| ---- | ------- |
+| Start backend | `cd backend && docker compose up -d` |
+| Rebuild backend after code changes | `cd backend && docker compose up -d --build api` |
+| Start frontend | `cd frontend && npm run dev` |
+| Check backend health | `curl http://localhost:8000/health` |
+| View backend logs | `cd backend && docker compose logs api --tail 50` |
+| Stop everything | Backend: `docker compose stop` / Frontend: `Ctrl+C` |
+| Clean restart | `cd backend && docker compose down -v && docker compose up -d --build` |
 
 ---
 
@@ -241,58 +238,25 @@ Full Swagger docs: http://localhost:8000/docs
 
 ```
 Browser (localhost:3000)
-  |
-  |  REST + SSE
-  v
-FastAPI (localhost:8000)          Docker container: agent_platform_api
-  |         |
-  |         +---> LangGraph workflow
-  |                 |
-  |                 +---> OrchestratorAgent
-  |                 +---> RequirementAnalysisAgent  \
-  |                 +---> ArchitectureAgent           |  each calls
-  |                 +---> CodingAgent                 |  Gemini API
-  |                 +---> DebuggingAgent              |  via LangChain
-  |                 +---> TestingAgent                |
-  |                 +---> DocumentationAgent          |
-  |                 +---> DeploymentAgent           /
-  |
-  +---> PostgreSQL (localhost:5432)    Docker container: agent_platform_postgres
-  |       stores projects, state, artifacts
-  |
-  +---> ChromaDB (localhost:8010)      Docker container: agent_platform_chroma
-          vector store for RAG (knowledge base, project memory)
-```
-
----
-
-## File Structure
-
-```
-mainproject/
-  backend/
-    api/              FastAPI app + routes
-    agents/           All 8 agent implementations
-    core/             LangGraph workflow (graph.py, state.py)
-    config/           Settings (settings.py)
-    models/           DB models + Pydantic schemas
-    rag/              ChromaDB RAG implementations
-    services/         Business logic (project_service, workflow_service)
-    scripts/          DB init script
-    docker/           Dockerfile + entrypoint
-    docker-compose.yml
-    .env              Your local config (gitignored)
-    env.example       Template for .env
-    requirements.txt  Python dependencies
-  frontend/
-    src/
-      components/     React components (chat, output, agents)
-      hooks/          Custom hooks (useWorkflowStream)
-      layouts/        Main three-panel layout
-      services/       API client (api.ts)
-      store/          Zustand global state
-      types/          TypeScript type definitions
-    .env              Frontend config (gitignored)
-    .env.example      Template
-  run-backend.sh      One-command backend startup
+  │
+  │  REST + SSE (Server-Sent Events)
+  ▼
+FastAPI (localhost:8000)          Docker: agent_platform_api
+  │         │
+  │         └──→ LangGraph workflow
+  │                 │
+  │                 ├──→ OrchestratorAgent
+  │                 ├──→ RequirementAnalysisAgent  ╲
+  │                 ├──→ ArchitectureAgent           │  each calls
+  │                 ├──→ CodingAgent                 │  Azure OpenAI (GPT-4)
+  │                 ├──→ DebuggingAgent              │
+  │                 ├──→ TestingAgent                │
+  │                 ├──→ DocumentationAgent          │
+  │                 └──→ DeploymentAgent           ╱
+  │
+  ├──→ PostgreSQL (localhost:5432)    Docker: agent_platform_postgres
+  │       stores projects, state, chat history
+  │
+  └──→ ChromaDB (localhost:8010)      Docker: agent_platform_chroma
+          vector store for RAG (uses Gemini embeddings)
 ```

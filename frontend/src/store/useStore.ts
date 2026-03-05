@@ -33,6 +33,7 @@ interface AppState {
   setProjectStatus: (status: ProjectStatus) => void;
   setWorkflowState: (state: WorkflowState) => void;
   addMessage: (message: Message) => void;
+  setMessages: (messages: Message[]) => void;
   updateAgentStatus: (name: string, status: Partial<AgentStatus>) => void;
   setLoading: (loading: boolean) => void;
   setError: (error: string | null) => void;
@@ -96,6 +97,8 @@ export const useStore = create<AppState>((set) => ({
     set((state) => ({
       messages: [...state.messages, message],
     })),
+
+  setMessages: (messages) => set({ messages }),
   
   updateAgentStatus: (name, updates) =>
     set((state) => {

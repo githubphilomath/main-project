@@ -52,14 +52,12 @@ class DebuggingAgent(BaseAgent):
                 },
             )
 
-        # Limit code artifacts to prevent huge prompts (process max 10 files)
-        code_artifacts_limited = code_artifacts[:10]
-        if len(code_artifacts) > 10:
+        code_artifacts_limited = code_artifacts[:15]
+        if len(code_artifacts) > 15:
             self.logger.warning(
-                f"Limiting debugging to first 10 files out of {len(code_artifacts)}"
+                f"Limiting debugging to first 15 files out of {len(code_artifacts)}"
             )
 
-        # Retrieve relevant knowledge (with timeout protection)
         try:
             knowledge = self.retrieve_knowledge(
                 query="code debugging best practices and common issues"
@@ -68,50 +66,58 @@ class DebuggingAgent(BaseAgent):
             self.logger.warning(f"Failed to retrieve knowledge: {e}")
             knowledge = []
 
-        # Build prompt with limited content to prevent timeout
-        system_prompt = """You are a senior debugging engineer. Analyze code for issues
-        and provide fixes. Keep responses concise. When fixing code, preserve or add
-        docstrings and comments; documentation must stay with the code."""
-        
-        # Limit content size per file (max 2000 chars per file)
+        system_prompt = (
+            "You are an expert debugger. Find and fix code issues. For every issue "
+            "found, return the complete fixed file in fixed_files. Do not just report "
+            "issues — fix them. Preserve all docstrings and comments."
+        )
+
         code_summaries = []
         for artifact in code_artifacts_limited:
             if isinstance(artifact, dict):
                 file_path = artifact.get("file_path", "unknown")
-                content = artifact.get("content", "")[:2000]
+                content = artifact.get("content", "")[:5000]
             else:
                 file_path = getattr(artifact, "file_path", "unknown")
-                content = getattr(artifact, "content", "")[:2000]
+                content = getattr(artifact, "content", "")[:5000]
             code_summaries.append({"path": file_path, "content": content})
 
         prompt = f"""
-        Debug the following code files (analyzing {len(code_summaries)} files):
+Debug these {len(code_summaries)} code files. Find AND fix all issues.
 
-        Architecture: {json.dumps(architecture, indent=2)[:1000]}
+ARCHITECTURE: {json.dumps(architecture, indent=2)[:2000]}
 
-        Code Files:
-        {json.dumps(code_summaries, indent=2)}
+CODE FILES:
+{json.dumps(code_summaries, indent=2)}
 
-        Best practices:
-        {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
+ANALYZE EACH FILE FOR (in priority order):
+1. SYNTAX ERRORS — missing brackets, typos, invalid syntax
+2. RUNTIME ERRORS — null references, type errors, missing imports
+3. LOGIC ERRORS — off-by-one, wrong conditions, infinite loops
+4. SECURITY — XSS, injection, unvalidated input
+5. MISSING ERROR HANDLING — uncaught exceptions, missing validation
+6. WEB APP ISSUES — broken links between files, incorrect paths, missing assets
 
-        Analyze each file for:
-        - Syntax errors
-        - Logic errors
-        - Best practice violations
-        - Security issues
-        - Performance issues
+CRITICAL: For EVERY issue you find (especially high severity), return the
+COMPLETE fixed file content in fixed_files. Do not truncate. The fixed file
+replaces the original entirely.
 
-        Provide a JSON response with:
-        - issues_found: List of issues (max 20), each with:
-          - file_path: File with issue
-          - issue_type: Type of issue
-          - description: Description of issue (max 200 chars)
-          - severity: high/medium/low
-          - fix: Suggested fix (max 500 chars)
-        - fixed_files: List of fixed files with updated content (only critical fixes).
-          Preserve existing docstrings and comments; add documentation if missing.
-        """
+Respond with ONLY a JSON object:
+{{
+  "issues_found": [
+    {{
+      "file_path": "string",
+      "issue_type": "syntax|runtime|logic|security|error_handling|web",
+      "description": "clear description",
+      "severity": "high|medium|low",
+      "fix": "what was changed"
+    }}
+  ],
+  "fixed_files": [
+    {{"file_path": "string", "content": "COMPLETE fixed file content"}}
+  ]
+}}
+"""
 
         response_format = {
             "issues_found": [
@@ -179,27 +185,37 @@ class DebuggingAgent(BaseAgent):
                 )
                 stored_fix_count += 1
 
-        issues_count = len(debug_data.get("issues_found", []))
+        issues = debug_data.get("issues_found", [])
+        issues_count = len(issues)
         fixed_count = len(fixed_files)
-        
-        # Create decision message
+
         if issues_count > 0:
-            decision_msg = f"Found and fixed {issues_count} issues in {fixed_count} files"
+            issue_lines = []
+            for iss in issues:
+                sev = iss.get("severity", "?").upper()
+                fp = iss.get("file_path", "?")
+                desc = iss.get("description", "")
+                fix = iss.get("fix", "")
+                issue_lines.append(f"[{sev}] {fp}: {desc} → {fix}")
+            decision_msg = (
+                f"Found and fixed {issues_count} issues in {fixed_count} files:\n"
+                + "\n".join(issue_lines)
+            )
         else:
             decision_msg = "No issues found during debugging"
-            
+
         decision = self.create_decision(
             decision=decision_msg,
             rationale=f"Analyzed {len(code_artifacts)} files, fixed {fixed_count} files",
             confidence=0.8 if issues_count > 0 else 0.6,
         )
 
-        # Let the orchestrator handle phase transitions
         return self.update_state(
             state,
             {
                 "code_artifacts": updated_artifacts,
                 "agent_decisions": state.get("agent_decisions", []) + [decision],
+                "debug_issues": issues,
             },
         )
 

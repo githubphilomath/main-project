@@ -107,7 +107,7 @@ export const projectsApi = {
   /**
    * Start full application preview (serves generated app as runnable).
    */
-  startPreview: async (projectId: string): Promise<{ url: string; status: string; mode: string }> => {
+  startPreview: async (projectId: string): Promise<{ url: string; status: string; mode: string; backend_status?: string }> => {
     const response = await api.post(`/projects/${projectId}/preview/start`);
     return response.data;
   },
@@ -123,7 +123,7 @@ export const projectsApi = {
   /**
    * Get preview status.
    */
-  getPreviewStatus: async (projectId: string): Promise<{ status: string; url?: string }> => {
+  getPreviewStatus: async (projectId: string): Promise<{ status: string; url?: string; backend_status?: string; backend_message?: string }> => {
     const response = await api.get(`/projects/${projectId}/preview`);
     return response.data;
   },
@@ -134,6 +134,49 @@ export const projectsApi = {
   getState: async (projectId: string): Promise<WorkflowState> => {
     const response = await api.get<WorkflowState>(`/projects/${projectId}/state`);
     return response.data;
+  },
+
+  /**
+   * Download all project artifacts as a zip file.
+   */
+  download: async (projectId: string): Promise<void> => {
+    const response = await api.get(`/projects/${projectId}/download`, {
+      responseType: 'blob',
+    });
+    const blob = new Blob([response.data], { type: 'application/zip' });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    const disposition = response.headers['content-disposition'] || '';
+    const match = disposition.match(/filename="?(.+?)"?$/);
+    a.download = match?.[1] || 'project.zip';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  },
+
+  /**
+   * List all projects.
+   */
+  list: async (): Promise<Project[]> => {
+    const response = await api.get<Project[]>('/projects');
+    return response.data;
+  },
+
+  /**
+   * Save chat messages for a project.
+   */
+  saveMessages: async (projectId: string, messages: any[]): Promise<void> => {
+    await api.put(`/projects/${projectId}/messages`, { messages });
+  },
+
+  /**
+   * Get saved chat messages for a project.
+   */
+  getMessages: async (projectId: string): Promise<any[]> => {
+    const response = await api.get(`/projects/${projectId}/messages`);
+    return response.data.messages || [];
   },
 };
 

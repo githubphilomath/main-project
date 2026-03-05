@@ -6,33 +6,37 @@
  * Every flex/grid child that needs to scroll must have min-h-0/min-w-0.
  */
 
-import React from 'react';
+import React, { useState } from 'react';
 import { Header } from '@/components/layout/Header';
 import { ChatPanel } from '@/components/chat/ChatPanel';
 import { OutputViewer } from '@/components/output/OutputViewer';
 import { AgentExecutionPanel } from '@/components/agents/AgentExecutionPanel';
 
 export const MainLayout: React.FC = () => {
+  const [agentPanelExpanded, setAgentPanelExpanded] = useState(true);
+
   return (
     <div className="h-screen w-screen flex flex-col overflow-hidden">
-      {/* Header - fixed height */}
       <Header />
 
-      {/* Main content - fills remaining height */}
       <main className="flex-1 min-h-0 flex gap-3 p-3">
-        {/* Left Panel - Chat (fixed width) */}
         <section className="w-[380px] flex-shrink-0 min-h-0">
           <ChatPanel />
         </section>
 
-        {/* Center Panel - Output Viewer (fills remaining) */}
         <section className="flex-1 min-h-0 min-w-0">
           <OutputViewer />
         </section>
 
-        {/* Right Panel - Agent Execution Monitor (fixed width) */}
-        <section className="w-[320px] flex-shrink-0 min-h-0">
-          <AgentExecutionPanel />
+        <section
+          className={`flex-shrink-0 min-h-0 transition-[width] duration-300 ease-in-out ${
+            agentPanelExpanded ? 'w-[320px]' : 'w-[44px]'
+          }`}
+        >
+          <AgentExecutionPanel
+            isExpanded={agentPanelExpanded}
+            onToggle={() => setAgentPanelExpanded((v) => !v)}
+          />
         </section>
       </main>
     </div>

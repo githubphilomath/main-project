@@ -81,19 +81,55 @@ class WorkflowService:
                 "event": "agent_start",
                 "agent": "coding",
                 "phase": "coding",
-                "message": "Applying your modifications...",
+                "message": f"Analyzing your request: \"{message[:100]}{'...' if len(message) > 100 else ''}\"",
+                "thinking": f"Reading modification request and comparing with existing {len(state.get('code_artifacts', []))} files...",
                 "project_id": project_id,
             })
+
+            existing_paths = set(
+                (a.get("file_path", "") if isinstance(a, dict) else getattr(a, "file_path", ""))
+                for a in state.get("code_artifacts", [])
+            )
+
             result = self.workflow.coding.execute(state)
+
+            new_paths = set(
+                (a.get("file_path", "") if isinstance(a, dict) else getattr(a, "file_path", ""))
+                for a in result.get("code_artifacts", [])
+            )
+            added = new_paths - existing_paths
+            modified = new_paths & existing_paths
+            removed = existing_paths - new_paths
+
+            diff_summary_parts = []
+            if modified:
+                diff_summary_parts.append(f"Modified {len(modified)} file(s): {', '.join(list(modified)[:5])}")
+            if added:
+                diff_summary_parts.append(f"Added {len(added)} file(s): {', '.join(list(added)[:5])}")
+            if removed:
+                diff_summary_parts.append(f"Removed {len(removed)} file(s): {', '.join(list(removed)[:5])}")
+            diff_summary = ". ".join(diff_summary_parts) or "No file changes detected."
+
+            decision_msg = (
+                result.get("agent_decisions", [{}])[-1].get("decision", "Modifications applied.")
+                if result.get("agent_decisions") else "Modifications applied."
+            )
+
             self._broadcast_event(project_id, {
                 "event": "agent_complete",
                 "agent": "coding",
                 "phase": "coding",
-                "message": result.get("agent_decisions", [{}])[-1].get("decision", "Modifications applied.")
-                if result.get("agent_decisions") else "Modifications applied.",
+                "message": f"{decision_msg}\n\n**Changes:** {diff_summary}",
+                "summary": f"{decision_msg} — {diff_summary}",
+                "details": {
+                    "files_modified": len(modified),
+                    "files_added": len(added),
+                    "files_removed": len(removed),
+                    "modified_files": list(modified)[:10],
+                    "added_files": list(added)[:10],
+                },
                 "project_id": project_id,
             })
-            # Remove modification_request from persisted state; mark as completed
             result.pop("modification_request", None)
             result["current_phase"] = "completed"
             self.project_service.update_project_state(project_id, result)
@@ -101,6 +137,10 @@ class WorkflowService:
                 "event": "workflow_complete",
                 "phase": "coding",
                 "project_id": project_id,
+                "change_summary": diff_summary,
+                "files_modified": list(modified)[:10],
+                "files_added": list(added)[:10],
+                "files_removed": list(removed)[:10],
             })
             return result
         except Exception as e:

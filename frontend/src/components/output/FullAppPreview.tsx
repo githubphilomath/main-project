@@ -1,12 +1,17 @@
 /**
- * Full App Preview - Runs the complete generated application with backend, APIs, etc.
- * Serves all code artifacts so users can interact with the app like the final product.
+ * Full App Preview - Serves generated code as a live preview with background backend startup.
+ *
+ * Flow:
+ * 1. Click Launch → static preview loads instantly (with mock data fallback)
+ * 2. Backend starts in background (npm install, etc.)
+ * 3. When backend is live → iframe auto-upgrades to the live server URL
+ * 4. If backend fails → stays on static preview, user sees UI with mock data
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Button } from '@/components/ui/Button';
 import { projectsApi } from '@/services/api';
-import { Play, Square, ExternalLink, AlertCircle, Wrench } from 'lucide-react';
+import { Play, Square, ExternalLink, AlertCircle, Wrench, Loader2, CheckCircle2, XCircle } from 'lucide-react';
 import { useStore } from '@/store/useStore';
 
 interface FullAppPreviewProps {
@@ -22,6 +27,8 @@ function buildFixMessage(detail?: string | null): string {
   return FIX_PREVIEW_BASE;
 }
 
+type BackendStatus = 'none' | 'starting' | 'live' | 'failed';
+
 export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => {
   const { currentProject, setWorkflowState, setLoading: setStoreLoading, setStreaming } = useStore();
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
@@ -29,25 +36,65 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
   const [error, setError] = useState<string | null>(null);
   const [previewLoadError, setPreviewLoadError] = useState<string | null>(null);
   const [fixing, setFixing] = useState(false);
+  const [backendStatus, setBackendStatus] = useState<BackendStatus>('none');
   const eventSourceRef = useRef<EventSource | null>(null);
+  const pollRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const iframeRef = useRef<HTMLIFrameElement | null>(null);
 
   const pid = projectId || currentProject?.id;
+
+  const resolveUrl = (url: string) =>
+    url.startsWith('http') ? url : window.location.origin + url;
+
+  // Poll preview status for backend upgrade
+  const startPolling = useCallback(() => {
+    if (!pid || pollRef.current) return;
+    pollRef.current = setInterval(async () => {
+      try {
+        const res = await projectsApi.getPreviewStatus(pid);
+        const newBackendStatus = (res.backend_status || 'none') as BackendStatus;
+        setBackendStatus(newBackendStatus);
+
+        if (newBackendStatus === 'live' && res.url) {
+          const liveUrl = resolveUrl(res.url);
+          setPreviewUrl(liveUrl);
+          setPreviewLoadError(null);
+          // Stop polling once live
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        } else if (newBackendStatus === 'failed') {
+          if (pollRef.current) {
+            clearInterval(pollRef.current);
+            pollRef.current = null;
+          }
+        }
+      } catch {
+        // Ignore polling errors
+      }
+    }, 5000);
+  }, [pid]);
+
+  const stopPolling = useCallback(() => {
+    if (pollRef.current) {
+      clearInterval(pollRef.current);
+      pollRef.current = null;
+    }
+  }, []);
 
   const fetchStatus = useCallback(async () => {
     if (!pid) return;
     try {
       const res = await projectsApi.getPreviewStatus(pid);
       if (res.status === 'running' && res.url) {
-        const url = res.url.startsWith('http') ? res.url : window.location.origin + res.url;
+        const url = resolveUrl(res.url);
         setPreviewUrl(url);
         setError(null);
         setPreviewLoadError(null);
-        // Pre-flight: verify preview URL returns 200 before iframe loads
-        try {
-          const r = await fetch(url, { method: 'HEAD' });
-          if (!r.ok) setPreviewLoadError(`Preview returned ${r.status}`);
-        } catch {
-          setPreviewLoadError('Could not reach preview server');
+        setBackendStatus((res.backend_status || 'none') as BackendStatus);
+        if (res.backend_status === 'starting') {
+          startPolling();
         }
       } else {
         setPreviewUrl(null);
@@ -55,7 +102,7 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
     } catch {
       setPreviewUrl(null);
     }
-  }, [pid]);
+  }, [pid, startPolling]);
 
   useEffect(() => {
     if (!pid) {
@@ -65,20 +112,29 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
     fetchStatus();
   }, [pid, fetchStatus]);
 
+  useEffect(() => {
+    return () => {
+      stopPolling();
+      if (eventSourceRef.current) {
+        eventSourceRef.current.close();
+      }
+    };
+  }, [stopPolling]);
+
   const handleStart = async () => {
     if (!pid) return;
     setLoading(true);
     setError(null);
+    setBackendStatus('none');
     try {
       const res = await projectsApi.startPreview(pid);
-      const url = res.url.startsWith('http') ? res.url : window.location.origin + res.url;
+      const url = resolveUrl(res.url);
       setPreviewUrl(url);
       setPreviewLoadError(null);
-      try {
-        const r = await fetch(url, { method: 'HEAD' });
-        if (!r.ok) setPreviewLoadError(`Preview returned ${r.status}`);
-      } catch {
-        setPreviewLoadError('Could not reach preview server');
+      const bs = (res.backend_status || 'none') as BackendStatus;
+      setBackendStatus(bs);
+      if (bs === 'starting') {
+        startPolling();
       }
     } catch (e: unknown) {
       setError(e instanceof Error ? e.message : 'Failed to start preview');
@@ -91,9 +147,11 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
   const handleStop = async () => {
     if (!pid) return;
     setLoading(true);
+    stopPolling();
     try {
       await projectsApi.stopPreview(pid);
       setPreviewUrl(null);
+      setBackendStatus('none');
     } finally {
       setLoading(false);
     }
@@ -118,14 +176,10 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
         await projectsApi.stopPreview(pid);
         setPreviewUrl(null);
         const res = await projectsApi.startPreview(pid);
-        const url = res.url.startsWith('http') ? res.url : window.location.origin + res.url;
+        const url = resolveUrl(res.url);
         setPreviewUrl(url);
-        try {
-          const r = await fetch(url, { method: 'HEAD' });
-          if (!r.ok) setPreviewLoadError(`Preview returned ${r.status}`);
-        } catch {
-          setPreviewLoadError('Could not reach preview server');
-        }
+        setBackendStatus((res.backend_status || 'none') as BackendStatus);
+        if (res.backend_status === 'starting') startPolling();
       } catch (e) {
         console.error('Refresh after fix failed:', e);
       } finally {
@@ -153,15 +207,7 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
       es.close();
       eventSourceRef.current = null;
     }
-  }, [pid, fixing, previewLoadError, setWorkflowState, setStoreLoading, setStreaming]);
-
-  useEffect(() => {
-    return () => {
-      if (eventSourceRef.current) {
-        eventSourceRef.current.close();
-      }
-    };
-  }, []);
+  }, [pid, fixing, previewLoadError, setWorkflowState, setStoreLoading, setStreaming, startPolling]);
 
   if (!pid) {
     return (
@@ -184,7 +230,7 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
           <>
             <Button size="sm" variant="outline" onClick={handleStop} disabled={loading}>
               <Square className="h-3.5 w-3.5 mr-1.5" />
-              Stop Preview
+              Stop
             </Button>
             <Button
               size="sm"
@@ -205,6 +251,26 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
               <ExternalLink className="h-3.5 w-3.5 mr-1.5" />
               Open in new tab
             </a>
+
+            {/* Backend status indicator */}
+            {backendStatus === 'starting' && (
+              <span className="ml-auto flex items-center gap-1.5 text-xs text-blue-600 bg-blue-50 dark:bg-blue-950/30 px-2 py-1 rounded-md">
+                <Loader2 className="h-3 w-3 animate-spin" />
+                Backend starting…
+              </span>
+            )}
+            {backendStatus === 'live' && (
+              <span className="ml-auto flex items-center gap-1.5 text-xs text-green-600 bg-green-50 dark:bg-green-950/30 px-2 py-1 rounded-md">
+                <CheckCircle2 className="h-3 w-3" />
+                Backend live
+              </span>
+            )}
+            {backendStatus === 'failed' && (
+              <span className="ml-auto flex items-center gap-1.5 text-xs text-muted-foreground bg-muted px-2 py-1 rounded-md">
+                <XCircle className="h-3 w-3" />
+                Static preview (backend unavailable)
+              </span>
+            )}
           </>
         )}
       </div>
@@ -229,6 +295,7 @@ export const FullAppPreview: React.FC<FullAppPreviewProps> = ({ projectId }) => 
               </div>
             )}
             <iframe
+              ref={iframeRef}
               src={previewUrl}
               title="Full Application Preview"
               className="w-full h-full border-0"

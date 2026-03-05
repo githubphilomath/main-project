@@ -40,27 +40,60 @@ class RequirementAnalysisAgent(BaseAgent):
             query=f"requirements analysis best practices for {state['project_description']}"
         )
 
-        # Build prompt
-        system_prompt = """You are a senior requirements analyst. Analyze user requirements
-        and create a comprehensive requirements specification document."""
+        system_prompt = (
+            "You are a senior requirements analyst. Create exhaustive, unambiguous "
+            "specifications that developers can implement without clarifying questions. "
+            "Be thorough so the first version of the software is production-ready."
+        )
         prompt = f"""
-        Analyze the following project requirements and create a detailed specification:
+Analyze this project and produce a COMPLETE requirements specification.
 
-        Project Name: {state['project_name']}
-        Project Description: {state['project_description']}
-        User Requirements: {state['user_requirements']}
+PROJECT: {state['project_name']}
+DESCRIPTION: {state['project_description']}
+RAW REQUIREMENTS: {state['user_requirements']}
 
-        Consider the following best practices:
-        {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
+REFERENCE PATTERNS:
+{json.dumps([k.get('content', '')[:300] for k in knowledge[:3]], indent=2)}
 
-        Provide a JSON response with:
-        - functional_requirements: List of functional requirements
-        - non_functional_requirements: List of non-functional requirements
-        - user_stories: List of user stories
-        - acceptance_criteria: List of acceptance criteria
-        - technical_constraints: List of technical constraints
-        - assumptions: List of assumptions
-        """
+INSTRUCTIONS — be exhaustive:
+1. FUNCTIONAL REQUIREMENTS: List every discrete capability the system must have.
+   Write each as a testable statement: "The system shall [verb] [object] [condition]."
+   Include edge cases (empty states, error states, boundary values).
+   Aim for at least 8-15 requirements even for simple projects.
+
+2. NON-FUNCTIONAL REQUIREMENTS: Cover performance (response times, concurrency),
+   security (input validation, XSS/CSRF for web apps), accessibility (keyboard
+   navigation, contrast ratios), reliability, and usability. At least 5 items.
+
+3. USER STORIES: Use the format "As a [role], I want [goal] so that [benefit]."
+   Cover the primary user journey end-to-end plus at least 2 alternate/edge-case
+   flows. Minimum 5 stories.
+
+4. ACCEPTANCE CRITERIA: For each user story, write at least 2 criteria in
+   Given/When/Then format. These must be specific and measurable.
+
+5. TECHNICAL CONSTRAINTS: Recommend a concrete technology stack with rationale.
+   Specify language, framework, libraries, and runtime. Consider the project
+   description to pick the most appropriate stack.
+
+6. ASSUMPTIONS: List what you are assuming about the user's intent, deployment
+   environment, and scope boundaries.
+
+7. UI/UX GUIDELINES (if the project has a user interface): Describe layout,
+   color scheme, typography, responsive behavior, and key interactions. Be
+   specific enough that a developer can implement without a designer.
+
+Respond with ONLY a JSON object (no markdown fences):
+{{
+  "functional_requirements": ["string", ...],
+  "non_functional_requirements": ["string", ...],
+  "user_stories": ["string", ...],
+  "acceptance_criteria": ["string", ...],
+  "technical_constraints": ["string", ...],
+  "assumptions": ["string", ...],
+  "ui_ux_guidelines": ["string", ...]
+}}
+"""
 
         response_format = {
             "functional_requirements": ["string"],
@@ -69,6 +102,7 @@ class RequirementAnalysisAgent(BaseAgent):
             "acceptance_criteria": ["string"],
             "technical_constraints": ["string"],
             "assumptions": ["string"],
+            "ui_ux_guidelines": ["string"],
         }
 
         try:

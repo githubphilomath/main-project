@@ -42,39 +42,53 @@ class DeploymentAgent(BaseAgent):
             query="deployment best practices docker kubernetes CI/CD"
         )
 
-        # Build prompt
-        system_prompt = """You are a DevOps engineer. Create deployment configurations
-        for the project. Documentation is required: include comments in config files
-        and clear deployment instructions. Documentation goes with the code/config."""
+        system_prompt = (
+            "You are a DevOps engineer who creates deployment configurations that "
+            "work on the first try. Your deployment steps are copy-pasteable."
+        )
+
+        code_entries = []
+        for a in code_artifacts[:10]:
+            fp = a.get("file_path", "") if isinstance(a, dict) else getattr(a, "file_path", "")
+            code_entries.append(fp)
+
+        tech_stack = architecture.get("technology_stack", [])
+
         prompt = f"""
-        Create deployment configuration for the following project:
+Create deployment configuration for this project.
 
-        Project: {state['project_name']}
-        Architecture: {json.dumps(architecture, indent=2)}
-        Code Files: {len(code_artifacts)} files
-        Technologies: {json.dumps(architecture.get('technology_stack', []), indent=2)}
+PROJECT: {state['project_name']}
+TECH STACK: {json.dumps(tech_stack, indent=2)}
+CODE FILES: {json.dumps(code_entries, indent=2)}
+ARCHITECTURE: {json.dumps(architecture, indent=2)[:3000]}
 
-        Best practices:
-        {json.dumps([k.get('content', '')[:200] for k in knowledge[:3]], indent=2)}
+INSTRUCTIONS:
+1. Identify the entry point from the code files (e.g., index.html, main.py, app.js).
+2. Create a Dockerfile with the correct base image, COPY, and CMD for the tech stack.
+   CMD must actually run the app (e.g., "python main.py", "node server.js").
+   EXPOSE the correct port.
+3. Create docker-compose.yml if the app needs multiple services.
+4. List ALL environment variables the app needs, with descriptions.
+5. Write deployment_steps as exact shell commands a user can copy-paste to run locally:
+   Step 1: Clone/download
+   Step 2: Install dependencies (exact command)
+   Step 3: Run the app (exact command)
+   Step 4: Open in browser (exact URL)
+6. Include a simple health check.
 
-        Generate deployment configuration including:
-        - Docker configuration (Dockerfile, docker-compose.yml) with inline comments
-        - CI/CD pipeline configuration with comments
-        - Environment variables with descriptions
-        - Clear, step-by-step deployment instructions
-
-        REQUIRED: All config files and instructions must be documented. Include comments
-        in Dockerfile and YAML explaining each section. Deployment steps must be clear.
-
-        Provide a JSON response with:
-        - deployment_type: Type of deployment (docker/kubernetes/etc.)
-        - dockerfile: Dockerfile content
-        - docker_compose: docker-compose.yml content (if applicable)
-        - ci_cd_config: CI/CD pipeline configuration
-        - env_variables: List of required environment variables
-        - deployment_steps: List of deployment steps
-        - health_checks: Health check configuration
-        """
+Respond with ONLY a JSON object:
+{{
+  "deployment_type": "docker|static|node|python",
+  "dockerfile": "complete Dockerfile content with comments",
+  "docker_compose": "docker-compose.yml content or empty string",
+  "ci_cd_config": "CI/CD config or empty string",
+  "env_variables": ["VAR_NAME=description", ...],
+  "deployment_steps": ["step 1 command or instruction", "step 2", ...],
+  "health_checks": "health check config or description",
+  "entry_point": "main file to run (e.g., index.html, main.py)",
+  "run_command": "exact command to run locally (e.g., python main.py)"
+}}
+"""
 
         response_format = {
             "deployment_type": "string",
